@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, setLogLevel, Firestore } from 'firebase/firestore';
 
 // Configured Firebase project (scanne-bijoy)
 export const firebaseConfig = {
@@ -22,7 +22,23 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/spreadsheets');
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
-// Initialize Firestore
-export const db = getFirestore(app);
+// Suppress non-critical Firestore network reconnection notices in client console
+try {
+  setLogLevel('error');
+} catch {
+  // Ignore in environments where setLogLevel is restricted
+}
+
+// Initialize Firestore with auto-detect long polling to prevent [code=unavailable] WebChannel stream disconnects
+let dbInstance: Firestore;
+try {
+  dbInstance = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  });
+} catch {
+  dbInstance = getFirestore(app);
+}
+
+export const db = dbInstance;
 
 export default app;
