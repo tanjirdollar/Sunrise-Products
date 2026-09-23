@@ -5,23 +5,41 @@
 
 import { LotInvoice, Worker } from '../types';
 
-let cachedAccessToken: string | null = null;
+const ACCESS_TOKEN_STORAGE_KEY = 'stitchtrack_google_access_token';
 const SPREADSHEET_ID_KEY = 'stitchtrack_google_spreadsheet_id';
 
 export const setGoogleAccessToken = (token: string | null) => {
-  cachedAccessToken = token;
+  if (token) {
+    try {
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+    } catch {}
+  } else {
+    try {
+      localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    } catch {}
+  }
 };
 
 export const getGoogleAccessToken = (): string | null => {
-  return cachedAccessToken;
+  try {
+    return localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
 };
 
 export const getSavedSpreadsheetId = (): string | null => {
-  return localStorage.getItem(SPREADSHEET_ID_KEY);
+  try {
+    return localStorage.getItem(SPREADSHEET_ID_KEY);
+  } catch {
+    return null;
+  }
 };
 
 export const setSavedSpreadsheetId = (id: string) => {
-  localStorage.setItem(SPREADSHEET_ID_KEY, id);
+  try {
+    localStorage.setItem(SPREADSHEET_ID_KEY, id);
+  } catch {}
 };
 
 export const getSpreadsheetUrl = (id?: string | null): string | null => {
@@ -33,6 +51,7 @@ export const getSpreadsheetUrl = (id?: string | null): string | null => {
 export interface SheetSyncError extends Error {
   isApiDisabled?: boolean;
   activationUrl?: string;
+  isUnauthorized?: boolean;
   code?: number;
 }
 
@@ -42,7 +61,9 @@ export interface SheetSyncError extends Error {
 export const getOrCreateSpreadsheet = async (): Promise<string> => {
   const token = getGoogleAccessToken();
   if (!token) {
-    throw new Error('Google Sign-In required to sync with Google Sheets');
+    const err: SheetSyncError = new Error('Google Sign-In required to sync with Google Sheets');
+    err.isUnauthorized = true;
+    throw err;
   }
 
   const existingId = getSavedSpreadsheetId();
@@ -55,8 +76,15 @@ export const getOrCreateSpreadsheet = async (): Promise<string> => {
       if (checkRes.ok) {
         return existingId;
       }
-    } catch (e) {
-      console.warn('Existing spreadsheet unreachable, creating a new one', e);
+      if (checkRes.status === 401) {
+        setGoogleAccessToken(null);
+        const err: SheetSyncError = new Error('Google Login সেশন মেয়াদোত্তীর্ণ হয়েছে। অনুগ্রহ করে আবার লগইন করুন।');
+        err.isUnauthorized = true;
+        throw err;
+      }
+    } catch (e: any) {
+      if (e.isUnauthorized) throw e;
+      console.warn('Existing spreadsheet check skipped or failed:', e);
     }
   }
 
@@ -79,6 +107,13 @@ export const getOrCreateSpreadsheet = async (): Promise<string> => {
   });
 
   if (!createRes.ok) {
+    if (createRes.status === 401) {
+      setGoogleAccessToken(null);
+      const err: SheetSyncError = new Error('Google Login সেশন মেয়াদোত্তীর্ণ হয়েছে। অনুগ্রহ করে আবার লগইন করুন।');
+      err.isUnauthorized = true;
+      throw err;
+    }
+
     const errorText = await createRes.text();
     let friendlyMessage = errorText;
     let activationUrl = 'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=858072248658';
@@ -129,8 +164,9 @@ const initSheetHeaders = async (spreadsheetId: string, token: string) => {
       'Worker Name',
       'Designation',
       'Size',
-      'Quantity DZ',
-      'Rate (Tk)',
+      'Quantity (PCS)',
+      'Quantity (DZ)',
+      'Rate (Tk/DZ)',
       'Line Total (Tk)',
       'Lot Total DZ',
       'Lot Total Bill (Tk)',
@@ -146,35 +182,37 @@ const initSheetHeaders = async (spreadsheetId: string, token: string) => {
       'Worker Name',
       'Designation',
       'Default Size',
-      'Default Rate (Tk)',
       'Phone',
       'Status',
       'Created At',
     ],
   ];
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Lot_Invoices!A1:Q1?valueInputOption=USER_ENTERED`, {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ values: lotHeaders }),
-  });
+  try {
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Lot_Invoices!A1:R1?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ values: lotHeaders }),
+    });
 
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Workers!A1:H1?valueInputOption=USER_ENTERED`, {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ values: workerHeaders }),
-  });
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Workers!A1:G1?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ values: workerHeaders }),
+    });
+  } catch (err) {
+    console.warn('Failed to initialize headers:', err);
+  }
 };
 
 /**
  * Synchronizes all active lots to the "Lot_Invoices" sheet.
- * Clears old data rows and writes fresh active lots so deletions and additions are 100% in sync!
  */
 export const syncLotsToGoogleSheets = async (lots: LotInvoice[]): Promise<string> => {
   const token = getGoogleAccessToken();
@@ -183,8 +221,8 @@ export const syncLotsToGoogleSheets = async (lots: LotInvoice[]): Promise<string
   try {
     const spreadsheetId = await getOrCreateSpreadsheet();
 
-    // 1. Clear existing rows from A2:Q10000
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Lot_Invoices!A2:Q10000:clear`, {
+    // 1. Clear existing rows from A2:R10000
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Lot_Invoices!A2:R10000:clear`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -199,7 +237,8 @@ export const syncLotsToGoogleSheets = async (lots: LotInvoice[]): Promise<string
     const rows: any[][] = [];
 
     lots.forEach((lot) => {
-      lot.items.forEach((item) => {
+      if (lot.items.length === 0) {
+        // Even if no workers assigned yet, log the lot itself!
         rows.push([
           lot.invoiceNo,
           lot.invoiceDate,
@@ -207,24 +246,48 @@ export const syncLotsToGoogleSheets = async (lots: LotInvoice[]): Promise<string
           lot.line,
           lot.category,
           lot.item,
-          item.workerName,
-          item.designation,
-          item.size,
-          item.quantity,
-          item.rate,
-          item.totalPrice,
-          lot.totalQty,
-          lot.totalPrice,
+          '(এখনো কারিগর যুক্ত হয়নি)',
+          '',
+          '',
+          lot.totalLotPieces || 0,
+          lot.totalTargetDZ || 0,
+          '',
+          0,
+          lot.totalTargetDZ || 0,
+          0,
           lot.preparedBy || '',
           lot.checkedBy || '',
           lot.updatedAt || new Date().toISOString(),
         ]);
-      });
+      } else {
+        lot.items.forEach((item) => {
+          const pcs = item.pieces ?? Math.round(item.quantity * 12);
+          rows.push([
+            lot.invoiceNo,
+            lot.invoiceDate,
+            lot.receiveDate,
+            lot.line,
+            lot.category,
+            lot.item,
+            item.workerName,
+            item.designation,
+            item.size,
+            pcs,
+            item.quantity,
+            item.rate,
+            item.totalPrice,
+            lot.totalQty,
+            lot.totalPrice,
+            lot.preparedBy || '',
+            lot.checkedBy || '',
+            lot.updatedAt || new Date().toISOString(),
+          ]);
+        });
+      }
     });
 
     if (rows.length > 0) {
-      // 3. Write rows
-      const updateRes = await fetch(
+      await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Lot_Invoices!A2?valueInputOption=USER_ENTERED`,
         {
           method: 'PUT',
@@ -235,10 +298,6 @@ export const syncLotsToGoogleSheets = async (lots: LotInvoice[]): Promise<string
           body: JSON.stringify({ values: rows }),
         }
       );
-
-      if (!updateRes.ok) {
-        console.error('Failed to write lot rows to Google Sheets:', await updateRes.text());
-      }
     }
 
     return spreadsheetId;
@@ -250,7 +309,6 @@ export const syncLotsToGoogleSheets = async (lots: LotInvoice[]): Promise<string
 
 /**
  * Synchronizes all active workers to the "Workers" sheet.
- * Clears old rows and writes fresh active workers so deletions and additions are 100% in sync!
  */
 export const syncWorkersToGoogleSheets = async (workers: Worker[]): Promise<string> => {
   const token = getGoogleAccessToken();
@@ -259,8 +317,8 @@ export const syncWorkersToGoogleSheets = async (workers: Worker[]): Promise<stri
   try {
     const spreadsheetId = await getOrCreateSpreadsheet();
 
-    // Clear existing rows A2:H5000
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Workers!A2:H5000:clear`, {
+    // Clear existing rows A2:G5000
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Workers!A2:G5000:clear`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -276,7 +334,6 @@ export const syncWorkersToGoogleSheets = async (workers: Worker[]): Promise<stri
       w.name,
       w.designation || 'Plain Machine Operator',
       w.defaultSize || '14/20',
-      w.defaultRate || '',
       w.phone || '',
       w.active ? 'Active' : 'Inactive',
       w.createdAt || new Date().toISOString(),

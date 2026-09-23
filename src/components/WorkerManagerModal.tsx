@@ -44,7 +44,7 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
   const [formCardNo, setFormCardNo] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formDesignation, setFormDesignation] = useState(settings.defaultDesignation || 'Plain Machine Operator');
-  const [formRate, setFormRate] = useState('246');
+  const [formRate, setFormRate] = useState('');
   const [formSize, setFormSize] = useState('14/20');
 
   // Compute stats per worker
@@ -91,7 +91,7 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
     setFormCardNo(w.cardNo || '');
     setFormPhone(w.phone || '');
     setFormDesignation(w.designation || 'Plain Machine Operator');
-    setFormRate(w.defaultRate ? String(w.defaultRate) : '246');
+    setFormRate(w.defaultRate ? String(w.defaultRate) : '');
     setFormSize(w.defaultSize || '14/20');
     setShowAddForm(true);
   };
@@ -102,7 +102,7 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
     setFormCardNo(`OP-${String(workers.length + 1).padStart(2, '0')}`);
     setFormPhone('');
     setFormDesignation(settings.defaultDesignation || 'Plain Machine Operator');
-    setFormRate('246');
+    setFormRate('');
     setFormSize('14/20');
     setShowAddForm(true);
   };
@@ -218,15 +218,16 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">ডিফল্ট রেট (৳ / DZ)</label>
+              <label className="block font-semibold text-slate-700 mb-1">রেট (ঐচ্ছিক)</label>
               <input
                 type="number"
                 step="0.01"
                 value={formRate}
                 onChange={(e) => setFormRate(e.target.value)}
-                placeholder="246"
+                placeholder="মালের অনুযায়ী ম্যানুয়ালি দেওয়া হয়"
                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
               />
+              <span className="text-[10px] text-slate-400">প্রতি মালে ম্যানুয়ালি রেট ইনপুট হবে</span>
             </div>
 
             <div>

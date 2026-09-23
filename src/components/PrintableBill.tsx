@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Printer, 
   Download, 
@@ -7,14 +7,24 @@ import {
   UserCheck, 
   FileSpreadsheet,
   Share2,
-  CheckCircle2
+  CheckCircle2,
+  Plus,
+  Trash2,
+  Users,
+  Calculator,
+  AlertTriangle,
+  Layers,
+  Save,
+  X
 } from 'lucide-react';
-import { FactorySettings, LotInvoice } from '../types';
+import { FactorySettings, LotInvoice, LotItemEntry, Worker } from '../types';
 import { exportLotToCSV } from '../services/db';
 
 interface PrintableBillProps {
   lot: LotInvoice;
   settings: FactorySettings;
+  workers: Worker[];
+  onUpdateLot: (updatedLot: LotInvoice) => void;
   onBack: () => void;
   onEdit: (lot: LotInvoice) => void;
   onSelectWorker: (workerId: string, workerName: string) => void;
@@ -23,10 +33,26 @@ interface PrintableBillProps {
 export const PrintableBill: React.FC<PrintableBillProps> = ({
   lot,
   settings,
+  workers,
+  onUpdateLot,
   onBack,
   onEdit,
   onSelectWorker
 }) => {
+  // Worker Assignment Panel State
+  const [showAssignDrawer, setShowAssignDrawer] = useState(false);
+  const [selectedWorkerId, setSelectedWorkerId] = useState('');
+  const [customWorkerName, setCustomWorkerName] = useState('');
+  const [workerDesignation, setWorkerDesignation] = useState(settings.defaultDesignation || 'Plain Machine Operator');
+  const [workerSize, setWorkerSize] = useState('14/20');
+  const [inputPieces, setInputPieces] = useState('');
+  const [inputRate, setInputRate] = useState(''); // No default rate! Manual input
+
+  // Inline edit state
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editPieces, setEditPieces] = useState<string>('');
+  const [editRate, setEditRate] = useState<string>('');
+
   const handlePrint = () => {
     window.print();
   };
@@ -43,14 +69,152 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
     }).format(amount);
   };
 
+  // Calculations for progress & totals
+  const totalAssignedDZ = lot.items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+  const totalAssignedPcs = lot.items.reduce((sum, i) => sum + (Number(i.pieces) || Math.round((Number(i.quantity) || 0) * 12)), 0);
+  const lotTargetDZ = lot.totalTargetDZ || (lot.totalLotPieces ? lot.totalLotPieces / 12 : totalAssignedDZ);
+  const lotTargetPcs = lot.totalLotPieces || Math.round(lotTargetDZ * 12);
+  const remainingPcs = lotTargetPcs - totalAssignedPcs;
+  const remainingDZ = Math.round((lotTargetDZ - totalAssignedDZ) * 100) / 100;
+
+  // Add Worker to this Lot
+  const handleAddWorker = () => {
+    let name = customWorkerName.trim();
+    let designation = workerDesignation.trim() || 'Plain Machine Operator';
+    let size = workerSize.trim() || '14/20';
+
+    if (selectedWorkerId) {
+      const w = workers.find((item) => item.id === selectedWorkerId);
+      if (w) {
+        name = w.name;
+        designation = w.designation || designation;
+        size = w.defaultSize || size;
+      }
+    }
+
+    if (!name) {
+      alert('অনুগ্রহ করে কারিগরের নাম নির্বাচন বা টাইপ করুন');
+      return;
+    }
+
+    const pcs = parseFloat(inputPieces) || 0;
+    if (pcs <= 0) {
+      alert('অনুগ্রহ করে মালের পরিমাণ (পিস) দিন');
+      return;
+    }
+
+    const rate = parseFloat(inputRate) || 0;
+    if (rate <= 0) {
+      if (!confirm('রেট ০ বা ফাঁকা রয়েছে। আপনি কি এই কারিগরকে রেট ছাড়া মাল যুক্ত করতে চান? (পরেও রেট দেওয়া যাবে)')) {
+        return;
+      }
+    }
+
+    const qtyDZ = Math.round((pcs / 12) * 100) / 100;
+    const lineTotal = Math.round(qtyDZ * rate * 100) / 100;
+
+    const newItem: LotItemEntry = {
+      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      workerId: selectedWorkerId || `w-custom-${Date.now()}`,
+      workerName: name,
+      designation,
+      size,
+      unit: 'DZ',
+      pieces: pcs,
+      quantity: qtyDZ,
+      rate,
+      totalPrice: lineTotal,
+    };
+
+    const updatedItems = [...lot.items, newItem];
+    const newTotalDZ = updatedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+    const newTotalPrice = updatedItems.reduce((sum, i) => sum + (Number(i.totalPrice) || 0), 0);
+
+    const updatedLot: LotInvoice = {
+      ...lot,
+      items: updatedItems,
+      totalQty: Math.round(newTotalDZ * 100) / 100,
+      totalPrice: Math.round(newTotalPrice * 100) / 100,
+      updatedAt: new Date().toISOString(),
+    };
+
+    onUpdateLot(updatedLot);
+
+    // Reset inputs
+    setSelectedWorkerId('');
+    setCustomWorkerName('');
+    setInputPieces('');
+    setInputRate('');
+    setShowAssignDrawer(false);
+  };
+
+  // Delete worker row from lot
+  const handleDeleteItem = (itemId: string) => {
+    if (!confirm('আপনি কি এই কারিগরের এন্ট্রি মুছে ফেলতে চান?')) return;
+
+    const updatedItems = lot.items.filter((i) => i.id !== itemId);
+    const newTotalDZ = updatedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+    const newTotalPrice = updatedItems.reduce((sum, i) => sum + (Number(i.totalPrice) || 0), 0);
+
+    const updatedLot: LotInvoice = {
+      ...lot,
+      items: updatedItems,
+      totalQty: Math.round(newTotalDZ * 100) / 100,
+      totalPrice: Math.round(newTotalPrice * 100) / 100,
+      updatedAt: new Date().toISOString(),
+    };
+
+    onUpdateLot(updatedLot);
+  };
+
+  // Start inline edit
+  const handleStartEdit = (item: LotItemEntry) => {
+    setEditingItemId(item.id);
+    setEditPieces(String(item.pieces ?? Math.round(item.quantity * 12)));
+    setEditRate(String(item.rate));
+  };
+
+  // Save inline edit
+  const handleSaveEdit = (itemId: string) => {
+    const pcs = parseFloat(editPieces) || 0;
+    const rate = parseFloat(editRate) || 0;
+    const qtyDZ = Math.round((pcs / 12) * 100) / 100;
+    const lineTotal = Math.round(qtyDZ * rate * 100) / 100;
+
+    const updatedItems = lot.items.map((it) => {
+      if (it.id !== itemId) return it;
+      return {
+        ...it,
+        pieces: pcs,
+        quantity: qtyDZ,
+        rate,
+        totalPrice: lineTotal,
+      };
+    });
+
+    const newTotalDZ = updatedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+    const newTotalPrice = updatedItems.reduce((sum, i) => sum + (Number(i.totalPrice) || 0), 0);
+
+    const updatedLot: LotInvoice = {
+      ...lot,
+      items: updatedItems,
+      totalQty: Math.round(newTotalDZ * 100) / 100,
+      totalPrice: Math.round(newTotalPrice * 100) / 100,
+      updatedAt: new Date().toISOString(),
+    };
+
+    onUpdateLot(updatedLot);
+    setEditingItemId(null);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100 py-6 sm:py-8 px-2 sm:px-6">
+    <div className="min-h-screen bg-slate-100 py-4 sm:py-8 px-2 sm:px-6">
       
       {/* Top Action Bar (Hidden in Print) */}
-      <div className="max-w-4xl mx-auto mb-6 flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print">
+      <div className="max-w-4xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 no-print">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>চালান তালিকায় ফিরুন</span>
@@ -58,8 +222,16 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => setShowAssignDrawer(!showAssignDrawer)}
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 rounded-lg shadow-sm transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ কারিগরকে মাল প্রদান করুন</span>
+          </button>
+
+          <button
             onClick={() => onEdit(lot)}
-            className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition-colors"
           >
             <Edit3 className="w-4 h-4 text-slate-600" />
             <span>চালান এডিট</span>
@@ -67,25 +239,204 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
 
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 text-sm font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-lg transition-colors"
-            title="Google Sheets বা Excel এ খোলার জন্য CSV ফাইল ডাউনলোড"
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-2 rounded-lg transition-colors"
+            title="Excel বা Sheets এ খোলার জন্য CSV ফাইল ডাউনলোড"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Excel / Sheets এক্সপোর্ট</span>
+            <span className="hidden sm:inline">Excel / Sheets</span>
           </button>
 
           <button
             onClick={handlePrint}
-            className="flex items-center gap-1.5 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 px-5 py-2 rounded-lg shadow-sm transition-all active:scale-95"
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95"
           >
             <Printer className="w-4 h-4 text-emerald-400" />
-            <span>বিল প্রিন্ট করুন (A4)</span>
+            <span>বিল প্রিন্ট (A4)</span>
           </button>
         </div>
       </div>
 
-      {/* Main Printable Document Card */}
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md border border-slate-300 p-6 sm:p-10 text-slate-900 print-container">
+      {/* Lot Allocation Summary Card (no-print) */}
+      <div className="max-w-4xl mx-auto mb-5 bg-white rounded-xl border border-slate-200 p-4 shadow-sm no-print space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-emerald-600" />
+              <span>লট মালের বন্টন ও অগ্রগতি (চালান #{lot.invoiceNo}: {lot.item})</span>
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              একজন একজন করে কারিগরকে মাল দিন। পিস লিখলে স্বয়ংক্রিয়ভাবে ডজন হিসাব হবে।
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowAssignDrawer(!showAssignDrawer)}
+            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{showAssignDrawer ? 'ফর্ম বন্ধ করুন' : 'নতুন কারিগরকে মাল দিন'}</span>
+          </button>
+        </div>
+
+        {/* Progress Metrics */}
+        <div className="grid grid-cols-3 gap-2 text-center text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+          <div>
+            <span className="text-[10px] text-slate-500 block">লটের মোট মাল</span>
+            <span className="font-bold text-slate-900">{lotTargetPcs} PCS</span>
+            <span className="text-[10px] text-slate-500 block">({lotTargetDZ.toFixed(2)} DZ)</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-500 block">কারিগরদের দেওয়া হয়েছে</span>
+            <span className="font-bold text-emerald-700">{totalAssignedPcs} PCS</span>
+            <span className="text-[10px] text-emerald-600 block">({totalAssignedDZ.toFixed(2)} DZ)</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-500 block">অবশিষ্ট বাকি আছে</span>
+            <span className={`font-bold ${remainingPcs < 0 ? 'text-red-600' : 'text-amber-600'}`}>
+              {remainingPcs} PCS
+            </span>
+            <span className="text-[10px] text-slate-500 block">({remainingDZ.toFixed(2)} DZ)</span>
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all ${remainingPcs < 0 ? 'bg-red-500' : 'bg-emerald-600'}`}
+            style={{
+              width: `${Math.min(100, Math.max(0, lotTargetPcs > 0 ? (totalAssignedPcs / lotTargetPcs) * 100 : 0))}%`,
+            }}
+          />
+        </div>
+
+        {/* Worker Assignment Drawer */}
+        {showAssignDrawer && (
+          <div className="bg-emerald-50/80 border border-emerald-300 rounded-xl p-4 mt-3 space-y-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+              <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-emerald-600" />
+                <span>কারিগর নির্বাচন ও মালের পরিমাণ ইনপুট</span>
+              </h4>
+              <button
+                onClick={() => setShowAssignDrawer(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 text-xs">
+              {/* Worker Dropdown / Name */}
+              <div className="md:col-span-2">
+                <label className="block font-semibold text-slate-700 mb-1">কারিগর *</label>
+                {workers.length > 0 ? (
+                  <select
+                    value={selectedWorkerId}
+                    onChange={(e) => {
+                      setSelectedWorkerId(e.target.value);
+                      if (e.target.value) {
+                        const w = workers.find((item) => item.id === e.target.value);
+                        if (w) {
+                          setWorkerDesignation(w.designation || 'Plain Machine Operator');
+                          setWorkerSize(w.defaultSize || '14/20');
+                        }
+                      }
+                    }}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium"
+                  >
+                    <option value="">-- কারিগর বেছে নিন ({workers.length} জন আছেন) --</option>
+                    {workers.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} {w.cardNo ? `(${w.cardNo})` : ''} - {w.designation || 'Operator'}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={customWorkerName}
+                    onChange={(e) => setCustomWorkerName(e.target.value)}
+                    placeholder="কারিগরের নাম লিখুন"
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-900"
+                  />
+                )}
+                {workers.length > 0 && !selectedWorkerId && (
+                  <input
+                    type="text"
+                    value={customWorkerName}
+                    onChange={(e) => setCustomWorkerName(e.target.value)}
+                    placeholder="অথবা নতুন কারিগরের নাম লিখুন"
+                    className="w-full mt-1.5 p-1.5 bg-white border border-slate-300 rounded-lg text-[11px]"
+                  />
+                )}
+              </div>
+
+              {/* Pieces Input */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">মালের পরিমাণ (পিস) *</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={inputPieces}
+                    onChange={(e) => setInputPieces(e.target.value)}
+                    placeholder="যেমন: 60"
+                    className="w-full p-2 pr-9 bg-white border border-slate-300 rounded-lg font-bold text-slate-900"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                    PCS
+                  </span>
+                </div>
+                {parseFloat(inputPieces) > 0 && (
+                  <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
+                    = {(parseFloat(inputPieces) / 12).toFixed(2)} DZ
+                  </span>
+                )}
+              </div>
+
+              {/* Rate Input: Manual, No Default */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">রেট (৳ / DZ) *</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={inputRate}
+                    onChange={(e) => setInputRate(e.target.value)}
+                    placeholder="ম্যানুয়াল রেট"
+                    className="w-full p-2 pr-7 bg-white border border-slate-300 rounded-lg font-bold text-emerald-700 placeholder:text-slate-400 placeholder:font-normal"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                    ৳
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-0.5">ম্যানুয়ালি ইনপুট</span>
+              </div>
+
+              {/* Action Button */}
+              <div className="flex flex-col justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddWorker}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 shadow-sm transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>মাল প্রদান করুন</span>
+                </button>
+                {parseFloat(inputPieces) > 0 && parseFloat(inputRate) > 0 && (
+                  <span className="text-[10px] text-center font-bold text-slate-800 mt-1">
+                    মোট: ৳ {Math.round((parseFloat(inputPieces) / 12) * parseFloat(inputRate)).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Printable Document Card (White Paper Look) */}
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md border border-slate-300 p-5 sm:p-10 text-slate-900 print-container">
         
         {/* Factory Header (Exact match with photo) */}
         <div className="text-center border-b border-transparent pb-3 mb-3">
@@ -135,12 +486,12 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
             </div>
             <div className="flex">
               <span className="font-semibold w-24 sm:w-28 text-slate-800">Total DZ :</span>
-              <span className="font-bold text-slate-950">{(lot.totalTargetDZ || lot.totalQty).toFixed(2)}</span>
+              <span className="font-bold text-slate-950">{lotTargetDZ.toFixed(2)} DZ ({lotTargetPcs} PCS)</span>
             </div>
           </div>
 
           {/* Right Metadata Column */}
-          <div className="space-y-1 text-right sm:text-right">
+          <div className="space-y-1 text-right">
             <div className="flex justify-end">
               <span className="font-semibold text-slate-800 mr-2">Invoice Date :</span>
               <span className="font-medium text-slate-950">{lot.invoiceDate}</span>
@@ -150,7 +501,7 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
               <span className="font-medium text-slate-950">{lot.receiveDate}</span>
             </div>
             <div className="flex justify-end text-xs text-slate-500 pt-3 no-print">
-              <span>মোট কারিগর: {lot.items.length} জন</span>
+              <span>মাল প্রাপ্ত কারিগর: {lot.items.length} জন</span>
             </div>
           </div>
         </div>
@@ -160,71 +511,169 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
           <table className="w-full border-collapse border border-slate-900 text-xs sm:text-sm print-table">
             <thead>
               <tr className="bg-slate-100 text-slate-950 text-center font-bold">
-                <th className="border border-slate-900 px-2 py-1.5 w-12">SL No</th>
+                <th className="border border-slate-900 px-2 py-1.5 w-10">SL No</th>
                 <th className="border border-slate-900 px-3 py-1.5 text-left">Employee</th>
                 <th className="border border-slate-900 px-3 py-1.5 text-left">Designation</th>
                 <th className="border border-slate-900 px-2 py-1.5 w-16">Size</th>
+                <th className="border border-slate-900 px-2 py-1.5 w-20">Qty (PCS)</th>
                 <th className="border border-slate-900 px-2 py-1.5 w-20">Qty DZ</th>
                 <th className="border border-slate-900 px-2 py-1.5 w-20">Price</th>
                 <th className="border border-slate-900 px-2 py-1.5 w-24">Total Price</th>
                 <th className="border border-slate-900 px-3 py-1.5 w-28 sm:w-32">Signature</th>
+                <th className="border border-slate-900 px-2 py-1.5 w-16 no-print">অ্যাকশন</th>
               </tr>
             </thead>
             <tbody>
-              {lot.items.map((item, index) => (
-                <tr key={item.id || index} className="hover:bg-slate-50">
-                  {/* SL No */}
-                  <td className="border border-slate-900 px-2 py-1 text-center font-medium text-slate-800">
-                    {index + 1}
-                  </td>
-
-                  {/* Employee Name (Clickable on screen to open Khotiyan) */}
-                  <td className="border border-slate-900 px-3 py-1 font-medium text-slate-950">
+              {lot.items.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="border border-slate-900 p-8 text-center bg-slate-50">
+                    <Users className="w-8 h-8 text-slate-300 mx-auto mb-2 no-print" />
+                    <p className="font-bold text-slate-700 text-sm">
+                      এই লটে এখনো কোনো কারিগরকে মাল প্রদান করা হয়নি
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1 no-print">
+                      উপরে <strong>"+ কারিগরকে মাল প্রদান করুন"</strong> বাটনে ক্লিক করে একজন একজন করে কারিগরকে মাল দিন।
+                    </p>
                     <button
-                      type="button"
-                      onClick={() => onSelectWorker(item.workerId, item.workerName)}
-                      className="text-left font-semibold hover:text-emerald-700 hover:underline group flex items-center justify-between w-full"
-                      title="খতিয়ান দেখতে ক্লিক করুন"
+                      onClick={() => setShowAssignDrawer(true)}
+                      className="mt-3 text-xs font-semibold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-4 py-1.5 rounded-lg border border-emerald-300 no-print"
                     >
-                      <span>{item.workerName}</span>
-                      <span className="no-print text-[10px] text-emerald-600 opacity-0 group-hover:opacity-100 font-sans ml-1">
-                        খতিয়ান ↗
-                      </span>
+                      + প্রথম কারিগরকে মাল দিন
                     </button>
                   </td>
-
-                  {/* Designation */}
-                  <td className="border border-slate-900 px-3 py-1 text-slate-800">
-                    {item.designation}
-                  </td>
-
-                  {/* Size */}
-                  <td className="border border-slate-900 px-2 py-1 text-center text-slate-800">
-                    {item.size || '14/20'}
-                  </td>
-
-                  {/* Qty DZ */}
-                  <td className="border border-slate-900 px-2 py-1 text-center font-semibold text-slate-950">
-                    {item.quantity}
-                  </td>
-
-                  {/* Price / Rate */}
-                  <td className="border border-slate-900 px-2 py-1 text-right text-slate-900">
-                    {item.rate.toFixed(2)}
-                  </td>
-
-                  {/* Total Price */}
-                  <td className="border border-slate-900 px-2 py-1 text-right font-bold text-slate-950">
-                    {formatMoney(item.totalPrice)}
-                  </td>
-
-                  {/* Signature Box (For manual physical signing on print) */}
-                  <td className="border border-slate-900 px-2 py-1 text-center align-middle h-8">
-                    {/* Visual signature placeholder line */}
-                    <div className="w-full border-b border-dotted border-slate-300 print:border-transparent h-4"></div>
-                  </td>
                 </tr>
-              ))}
+              ) : (
+                lot.items.map((item, index) => {
+                  const pcs = item.pieces ?? Math.round(item.quantity * 12);
+                  const isEditing = editingItemId === item.id;
+
+                  return (
+                    <tr key={item.id || index} className="hover:bg-slate-50">
+                      {/* SL No */}
+                      <td className="border border-slate-900 px-2 py-1 text-center font-medium text-slate-800">
+                        {index + 1}
+                      </td>
+
+                      {/* Employee Name */}
+                      <td className="border border-slate-900 px-3 py-1 font-medium text-slate-950">
+                        <button
+                          type="button"
+                          onClick={() => onSelectWorker(item.workerId, item.workerName)}
+                          className="text-left font-semibold hover:text-emerald-700 hover:underline group flex items-center justify-between w-full"
+                          title="খতিয়ান দেখতে ক্লিক করুন"
+                        >
+                          <span>{item.workerName}</span>
+                          <span className="no-print text-[10px] text-emerald-600 opacity-0 group-hover:opacity-100 font-sans ml-1">
+                            খতিয়ান ↗
+                          </span>
+                        </button>
+                      </td>
+
+                      {/* Designation */}
+                      <td className="border border-slate-900 px-3 py-1 text-slate-800">
+                        {item.designation}
+                      </td>
+
+                      {/* Size */}
+                      <td className="border border-slate-900 px-2 py-1 text-center text-slate-800">
+                        {item.size || '14/20'}
+                      </td>
+
+                      {/* Qty PCS */}
+                      <td className="border border-slate-900 px-2 py-1 text-center font-semibold text-slate-950">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="1"
+                            value={editPieces}
+                            onChange={(e) => setEditPieces(e.target.value)}
+                            className="w-16 p-0.5 text-center font-bold border border-emerald-400 rounded"
+                          />
+                        ) : (
+                          `${pcs} PCS`
+                        )}
+                      </td>
+
+                      {/* Qty DZ */}
+                      <td className="border border-slate-900 px-2 py-1 text-center font-bold text-emerald-800">
+                        {isEditing && parseFloat(editPieces) > 0
+                          ? (parseFloat(editPieces) / 12).toFixed(2)
+                          : item.quantity.toFixed(2)}
+                      </td>
+
+                      {/* Price / Rate (Tk/DZ) */}
+                      <td className="border border-slate-900 px-2 py-1 text-right text-slate-900">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editRate}
+                            onChange={(e) => setEditRate(e.target.value)}
+                            className="w-16 p-0.5 text-right font-bold border border-emerald-400 rounded"
+                          />
+                        ) : (
+                          item.rate.toFixed(2)
+                        )}
+                      </td>
+
+                      {/* Total Price */}
+                      <td className="border border-slate-900 px-2 py-1 text-right font-bold text-slate-950">
+                        {isEditing && parseFloat(editPieces) > 0 && parseFloat(editRate) > 0
+                          ? formatMoney((parseFloat(editPieces) / 12) * parseFloat(editRate))
+                          : formatMoney(item.totalPrice)}
+                      </td>
+
+                      {/* Signature Box */}
+                      <td className="border border-slate-900 px-2 py-1 text-center align-middle h-8">
+                        <div className="w-full border-b border-dotted border-slate-300 print:border-transparent h-4"></div>
+                      </td>
+
+                      {/* Action column (Hidden in print) */}
+                      <td className="border border-slate-900 px-1 py-1 text-center no-print">
+                        {isEditing ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(item.id)}
+                              className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded"
+                              title="সংরক্ষণ"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingItemId(null)}
+                              className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded"
+                              title="বাতিল"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(item)}
+                              className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"
+                              title="পিস বা রেট পরিবর্তন"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItem(item.id)}
+                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="মুছে ফেলুন"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
 
               {/* Total Row (Exact matching style) */}
               <tr className="bg-slate-100 font-bold text-slate-950">
@@ -232,70 +681,65 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                   Total
                 </td>
                 <td className="border border-slate-900 px-2 py-2 text-center text-sm font-bold">
+                  {totalAssignedPcs} PCS
+                </td>
+                <td className="border border-slate-900 px-2 py-2 text-center text-sm font-bold text-emerald-900">
                   {lot.totalQty.toFixed(2)}
                 </td>
                 <td className="border border-slate-900 px-2 py-2 text-center text-xs text-slate-600">
-                  {/* Average or total unit rate if applicable */}
                   -
                 </td>
-                <td className="border border-slate-900 px-2 py-2 text-right text-sm font-extrabold">
+                <td className="border border-slate-900 px-2 py-2 text-right text-sm font-bold text-slate-950">
                   {formatMoney(lot.totalPrice)}
                 </td>
-                <td className="border border-slate-900 px-2 py-2 text-center">
-                  ✓
+                <td className="border border-slate-900 px-2 py-2 text-center text-xs text-slate-500">
+                  মোট কারিগর: {lot.items.length} জন
                 </td>
+                <td className="border border-slate-900 px-1 py-1 no-print"></td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        {/* Amount in words & Notes (Screen helper) */}
-        <div className="mt-3 flex justify-between items-center text-xs text-slate-600 no-print">
-          <div>
-            <span>মোট বিল: </span>
-            <span className="font-bold text-slate-900">৳ {formatMoney(lot.totalPrice)} টাকা</span>
-          </div>
-          <div>
-            <span>আইটেম সংখ্যা: </span>
-            <span className="font-medium text-slate-800">{lot.items.length} জন কারিগর</span>
-          </div>
-        </div>
-
-        {/* Footer Signature Blocks (Exact matching layout from photo) */}
-        <div className="mt-16 sm:mt-24 pt-6 grid grid-cols-3 gap-6 text-center text-xs sm:text-sm font-medium text-slate-900 page-break-inside-avoid">
+        {/* Triple Signature Blocks (Exact matching layout with photo) */}
+        <div className="grid grid-cols-3 gap-6 pt-16 mt-6 text-xs sm:text-sm text-slate-900 font-medium">
           {/* Prepared By */}
-          <div className="flex flex-col items-center">
-            <div className="w-36 sm:w-44 border-t border-slate-800 pt-1">
-              <p className="font-bold text-slate-950 font-serif">Prepared By</p>
-              <p className="text-[11px] text-slate-600">{lot.preparedBy || 'Production Incharge'}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Date: {lot.invoiceDate}</p>
+          <div className="text-center">
+            <div className="border-t border-slate-900 pt-1.5 font-semibold text-slate-950">
+              Prepared By
             </div>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              {lot.preparedBy || 'Production Incharge'}
+            </p>
           </div>
 
           {/* Checked By */}
-          <div className="flex flex-col items-center">
-            <div className="w-36 sm:w-44 border-t border-slate-800 pt-1">
-              <p className="font-bold text-slate-950 font-serif">Checked By</p>
-              <p className="text-[11px] text-slate-600">{lot.checkedBy || 'Sweing Supervisor'}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Date: ____________</p>
+          <div className="text-center">
+            <div className="border-t border-slate-900 pt-1.5 font-semibold text-slate-950">
+              Checked By
             </div>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              {lot.checkedBy || 'Sweing Supervisor'}
+            </p>
           </div>
 
           {/* Received By */}
-          <div className="flex flex-col items-center">
-            <div className="w-36 sm:w-44 border-t border-slate-800 pt-1">
-              <p className="font-bold text-slate-950 font-serif">Received By</p>
-              <p className="text-[11px] text-slate-600">{lot.receivedBy || 'Accounts / Admin'}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Date: ____________</p>
+          <div className="text-center">
+            <div className="border-t border-slate-900 pt-1.5 font-semibold text-slate-950">
+              Received By
             </div>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              {lot.receivedBy || 'Factory Admin'}
+            </p>
           </div>
         </div>
 
-      </div>
+        {/* Footer Note */}
+        <div className="mt-8 pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 print:text-[9px]">
+          <span>চালান সিস্টেম: StitchTrack Pro • Narayanganj Garments Hub</span>
+          <span>প্রিন্ট তারিখ: {new Date().toLocaleDateString('en-GB')}</span>
+        </div>
 
-      {/* Screen tips for manager */}
-      <div className="max-w-4xl mx-auto mt-4 text-center text-xs text-slate-500 no-print">
-        💡 টিপস: যে কোনো কারিগরের নামের ওপর ক্লিক করলে তার সম্পূর্ণ ব্যক্তিগত খতিয়ান খুলে যাবে। বিল শিটটি প্রিন্ট করার জন্য উপরের <strong>"বিল প্রিন্ট করুন (A4)"</strong> বাটনে চাপ দিন।
       </div>
 
     </div>

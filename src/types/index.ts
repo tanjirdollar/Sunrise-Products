@@ -5,7 +5,7 @@ export interface Worker {
   cardNo?: string;
   phone?: string;
   designation: string; // e.g. "Plain Machine Operator"
-  defaultRate?: number;
+  defaultRate?: number; // Optional, default is none
   defaultSize?: string;
   active: boolean;
   notes?: string;
@@ -19,9 +19,10 @@ export interface LotItemEntry {
   designation: string;
   size: string;
   unit: 'DZ' | 'PCS';
-  quantity: number; // e.g. 7, 5, 11.62, 20.13
-  rate: number; // e.g. 246.00
-  totalPrice: number; // quantity * rate
+  pieces?: number; // কারিগরকে দেওয়া মালের পরিমাণ (পিস)
+  quantity: number; // ডজনে কনভার্ট হওয়া পরিমাণ (pieces / 12)
+  rate: number; // রেট (টাকা / ডজন) - ম্যানুয়ালি ইনপুট
+  totalPrice: number; // quantity (DZ) * rate
   notes?: string;
 }
 
@@ -33,11 +34,12 @@ export interface LotInvoice {
   line: string; // e.g. "Sweing"
   factoryUnit: string; // e.g. "Tex Wear Fashion"
   category: string; // e.g. "হাফ হাতা"
-  item: string; // e.g. "New York City Shirt Hata"
-  totalTargetDZ?: number; // e.g. 72.00
-  items: LotItemEntry[];
-  totalQty: number; // sum of item quantities
-  totalPrice: number; // sum of totalPrices
+  item: string; // মালের নাম e.g. "New York City Shirt"
+  totalLotPieces?: number; // লটের মোট মালের পরিমাণ (পিস)
+  totalTargetDZ?: number; // লটের মোট মালের পরিমাণ (ডজন)
+  items: LotItemEntry[]; // কারিগরদের দেওয়া মালের তালিকা (পর্যায়ক্রমে যুক্ত হয়)
+  totalQty: number; // মোট বিতরণকৃত ডজন
+  totalPrice: number; // মোট বিল টাকা
   preparedBy?: string;
   checkedBy?: string;
   receivedBy?: string;

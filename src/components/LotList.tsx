@@ -241,9 +241,26 @@ export const LotList: React.FC<LotListProps> = ({
                     তারিখ: {lot.invoiceDate}
                   </span>
                   <span>•</span>
-                  <span>কাজ করেছেন: <strong className="text-slate-700 font-semibold">{lot.items.length} জন কারিগর</strong></span>
+                  <span>
+                    মোট মাল:{' '}
+                    <strong className="text-slate-900 font-bold">
+                      {lot.totalLotPieces || Math.round((lot.totalTargetDZ || lot.totalQty) * 12)} PCS
+                    </strong>{' '}
+                    ({(lot.totalTargetDZ || lot.totalQty).toFixed(1)} DZ)
+                  </span>
                   <span>•</span>
-                  <span>মোট মাল: <strong className="text-slate-900 font-bold">{lot.totalQty.toFixed(2)} DZ</strong></span>
+                  {lot.items.length === 0 ? (
+                    <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-semibold text-[11px] border border-amber-200">
+                      মাল বন্টন বাকি
+                    </span>
+                  ) : (
+                    <span>
+                      কারিগর পেয়েছেন:{' '}
+                      <strong className="text-emerald-700 font-bold">
+                        {lot.items.length} জন
+                      </strong>
+                    </span>
+                  )}
                 </div>
               </div>
 

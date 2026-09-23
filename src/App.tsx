@@ -23,7 +23,7 @@ import {
   subscribeToAuth,
   resyncAllToGoogleSheets
 } from './services/db';
-import { getSpreadsheetUrl } from './services/googleSheets';
+import { getSpreadsheetUrl, getGoogleAccessToken } from './services/googleSheets';
 import { FactorySettings, LotInvoice, Worker, WorkerPayment } from './types';
 import { defaultFactorySettings, initialLots, initialWorkers } from './data/seedData';
 import { Navbar } from './components/Navbar';
@@ -127,8 +127,9 @@ export default function App() {
 
   // Manual trigger to sync all data to Google Sheets
   const handleManualSyncSheets = async () => {
-    if (!user) {
-      handleLogin();
+    const token = getGoogleAccessToken();
+    if (!user || !token) {
+      await handleLogin();
       return;
     }
 
@@ -142,7 +143,9 @@ export default function App() {
       });
       setTimeout(() => setSyncToast(null), 6000);
     } catch (err: any) {
-      if (err.isApiDisabled || err.message?.includes('sheets.googleapis.com')) {
+      if (err.isUnauthorized || err.message?.includes('Google Sign-In required') || err.message?.includes('মেয়াদোত্তীর্ণ')) {
+        await handleLogin();
+      } else if (err.isApiDisabled || err.message?.includes('sheets.googleapis.com')) {
         setApiActivationModal({
           isOpen: true,
           url: err.activationUrl || 'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=858072248658'
@@ -310,6 +313,8 @@ export default function App() {
           <PrintableBill
             lot={viewingLot}
             settings={settings}
+            workers={workers}
+            onUpdateLot={handleSaveLot}
             onBack={() => setViewingLot(null)}
             onEdit={handleEditLot}
             onSelectWorker={handleSelectWorkerByNameOrId}
