@@ -12,16 +12,27 @@ import {
   signInWithPopup, 
   signOut as fbSignOut, 
   onAuthStateChanged, 
+  GoogleAuthProvider,
   User 
 } from 'firebase/auth';
 import { auth, db, googleProvider } from '../firebase/config';
 import { FactorySettings, LotInvoice, Worker, WorkerPayment } from '../types';
 import { defaultFactorySettings, initialLots, initialWorkers } from '../data/seedData';
+import { 
+  setGoogleAccessToken, 
+  getGoogleAccessToken, 
+  syncLotsToGoogleSheets, 
+  syncWorkersToGoogleSheets,
+  getOrCreateSpreadsheet,
+  getSpreadsheetUrl,
+  getSavedSpreadsheetId
+} from './googleSheets';
 
-const LOTS_STORAGE_KEY = 'stitchtrack_lots_v1';
-const WORKERS_STORAGE_KEY = 'stitchtrack_workers_v1';
-const SETTINGS_STORAGE_KEY = 'stitchtrack_settings_v1';
-const PAYMENTS_STORAGE_KEY = 'stitchtrack_payments_v1';
+// Use clean storage keys to guarantee fresh empty slate
+const LOTS_STORAGE_KEY = 'stitchtrack_lots_v2';
+const WORKERS_STORAGE_KEY = 'stitchtrack_workers_v2';
+const SETTINGS_STORAGE_KEY = 'stitchtrack_settings_v2';
+const PAYMENTS_STORAGE_KEY = 'stitchtrack_payments_v2';
 
 // Local storage helper
 export const getLocalData = <T>(key: string, defaultValue: T): T => {
@@ -43,10 +54,15 @@ export const setLocalData = <T>(key: string, value: T): void => {
 };
 
 // Auth functions
-export const signInWithGoogle = async (): Promise<User | null> => {
+export const signInWithGoogle = async (): Promise<{ user: User; accessToken: string | null }> => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const accessToken = credential?.accessToken || null;
+    if (accessToken) {
+      setGoogleAccessToken(accessToken);
+    }
+    return { user: result.user, accessToken };
   } catch (error) {
     console.error('Google Sign-In Error:', error);
     throw error;
@@ -56,6 +72,7 @@ export const signInWithGoogle = async (): Promise<User | null> => {
 export const logOut = async (): Promise<void> => {
   try {
     await fbSignOut(auth);
+    setGoogleAccessToken(null);
   } catch (error) {
     console.error('Logout Error:', error);
     throw error;
@@ -72,21 +89,22 @@ const WORKERS_COLLECTION = 'workers';
 const SETTINGS_COLLECTION = 'settings';
 const PAYMENTS_COLLECTION = 'payments';
 
-// Initialize default data if empty
+// Initialize data: Empty slate as requested
 export const initializeData = async () => {
-  // Check local storage first
-  const existingWorkers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []);
-  if (existingWorkers.length === 0) {
+  // Clear any old mock data from previous version keys
+  localStorage.removeItem('stitchtrack_lots_v1');
+  localStorage.removeItem('stitchtrack_workers_v1');
+
+  // Ensure default empty arrays
+  if (!localStorage.getItem(WORKERS_STORAGE_KEY)) {
     setLocalData(WORKERS_STORAGE_KEY, initialWorkers);
   }
-
-  const existingLots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
-  if (existingLots.length === 0) {
+  if (!localStorage.getItem(LOTS_STORAGE_KEY)) {
     setLocalData(LOTS_STORAGE_KEY, initialLots);
   }
-
-  const existingSettings = getLocalData<FactorySettings>(SETTINGS_STORAGE_KEY, defaultFactorySettings);
-  setLocalData(SETTINGS_STORAGE_KEY, existingSettings);
+  if (!localStorage.getItem(SETTINGS_STORAGE_KEY)) {
+    setLocalData(SETTINGS_STORAGE_KEY, defaultFactorySettings);
+  }
 };
 
 // Firestore Realtime Subscription for Lots
@@ -109,29 +127,27 @@ export const subscribeLots = (
           setLocalData(LOTS_STORAGE_KEY, remoteLots);
           onData(remoteLots);
         } else {
-          // If remote is empty, provide local
-          const local = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, initialLots);
+          const local = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
           onData(local);
         }
       },
       (err) => {
         console.warn('Firestore lots listener error (falling back to local):', err);
-        const local = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, initialLots);
+        const local = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
         onData(local);
         if (onError) onError(err);
       }
     );
   } catch (err) {
     console.warn('Failed to start Firestore lots listener:', err);
-    onData(getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, initialLots));
+    onData(getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []));
     return () => {};
   }
 };
 
-// Save a Lot
+// Save a Lot & Auto-Sync to Google Sheets
 export const saveLotInvoice = async (lot: LotInvoice): Promise<void> => {
-  // Update local storage immediately for fast UI
-  const lots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, initialLots);
+  const lots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
   const index = lots.findIndex((l) => l.id === lot.id);
   let updatedLots: LotInvoice[];
   if (index >= 0) {
@@ -149,11 +165,20 @@ export const saveLotInvoice = async (lot: LotInvoice): Promise<void> => {
   } catch (e) {
     console.warn('Firestore lot save deferred or failed:', e);
   }
+
+  // Automatic Google Sheets Sync
+  if (getGoogleAccessToken()) {
+    try {
+      await syncLotsToGoogleSheets(updatedLots);
+    } catch (sheetError) {
+      console.warn('Auto Google Sheets sync for lot deferred:', sheetError);
+    }
+  }
 };
 
-// Delete a Lot
+// Delete a Lot & Auto-Sync to Google Sheets (removes from sheet immediately)
 export const deleteLotInvoice = async (lotId: string): Promise<void> => {
-  const lots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, initialLots);
+  const lots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
   const updatedLots = lots.filter((l) => l.id !== lotId);
   setLocalData(LOTS_STORAGE_KEY, updatedLots);
 
@@ -162,6 +187,15 @@ export const deleteLotInvoice = async (lotId: string): Promise<void> => {
     await deleteDoc(lotRef);
   } catch (e) {
     console.warn('Firestore lot delete error:', e);
+  }
+
+  // Immediate deletion from Google Sheets
+  if (getGoogleAccessToken()) {
+    try {
+      await syncLotsToGoogleSheets(updatedLots);
+    } catch (sheetError) {
+      console.warn('Google Sheets lot deletion sync deferred:', sheetError);
+    }
   }
 };
 
@@ -183,26 +217,26 @@ export const subscribeWorkers = (
           setLocalData(WORKERS_STORAGE_KEY, remoteWorkers);
           onData(remoteWorkers);
         } else {
-          const local = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, initialWorkers);
+          const local = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []);
           onData(local);
         }
       },
       (err) => {
         console.warn('Firestore workers listener error:', err);
-        onData(getLocalData<Worker[]>(WORKERS_STORAGE_KEY, initialWorkers));
+        onData(getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []));
         if (onError) onError(err);
       }
     );
   } catch (err) {
     console.warn('Failed to start Firestore workers listener:', err);
-    onData(getLocalData<Worker[]>(WORKERS_STORAGE_KEY, initialWorkers));
+    onData(getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []));
     return () => {};
   }
 };
 
-// Save Worker
+// Save Worker & Auto-Sync to Google Sheets
 export const saveWorker = async (worker: Worker): Promise<void> => {
-  const workers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, initialWorkers);
+  const workers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []);
   const index = workers.findIndex((w) => w.id === worker.id);
   let updatedWorkers: Worker[];
   if (index >= 0) {
@@ -219,24 +253,20 @@ export const saveWorker = async (worker: Worker): Promise<void> => {
   } catch (e) {
     console.warn('Firestore worker save error:', e);
   }
-};
 
-// Save Multiple Workers (e.g. bulk import/reset)
-export const saveWorkersBulk = async (workers: Worker[]): Promise<void> => {
-  setLocalData(WORKERS_STORAGE_KEY, workers);
-  try {
-    for (const w of workers) {
-      const docRef = doc(db, WORKERS_COLLECTION, w.id);
-      await setDoc(docRef, w, { merge: true });
+  // Automatic Google Sheets Sync
+  if (getGoogleAccessToken()) {
+    try {
+      await syncWorkersToGoogleSheets(updatedWorkers);
+    } catch (sheetError) {
+      console.warn('Auto Google Sheets sync for worker deferred:', sheetError);
     }
-  } catch (e) {
-    console.warn('Firestore workers bulk save error:', e);
   }
 };
 
-// Delete Worker
+// Delete Worker & Auto-Sync to Google Sheets (removes from sheet immediately)
 export const deleteWorker = async (workerId: string): Promise<void> => {
-  const workers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, initialWorkers);
+  const workers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []);
   const updatedWorkers = workers.filter((w) => w.id !== workerId);
   setLocalData(WORKERS_STORAGE_KEY, updatedWorkers);
 
@@ -246,6 +276,26 @@ export const deleteWorker = async (workerId: string): Promise<void> => {
   } catch (e) {
     console.warn('Firestore worker delete error:', e);
   }
+
+  // Immediate deletion from Google Sheets
+  if (getGoogleAccessToken()) {
+    try {
+      await syncWorkersToGoogleSheets(updatedWorkers);
+    } catch (sheetError) {
+      console.warn('Google Sheets worker deletion sync deferred:', sheetError);
+    }
+  }
+};
+
+// Resync All data to Google Sheets
+export const resyncAllToGoogleSheets = async (): Promise<string> => {
+  const lots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
+  const workers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []);
+  
+  const spreadsheetId = await getOrCreateSpreadsheet();
+  await syncLotsToGoogleSheets(lots);
+  await syncWorkersToGoogleSheets(workers);
+  return getSpreadsheetUrl(spreadsheetId) || '';
 };
 
 // Settings
@@ -296,7 +346,7 @@ export const deleteWorkerPayment = async (paymentId: string): Promise<void> => {
   }
 };
 
-// CSV Export for Google Sheets and Google Drive
+// CSV Export for backup
 export const exportLotToCSV = (lot: LotInvoice, settings: FactorySettings) => {
   const headers = ['SL No', 'Employee', 'Designation', 'Size', 'Qty DZ', 'Price', 'Total Price', 'Signature'];
   const rows = lot.items.map((item, idx) => [

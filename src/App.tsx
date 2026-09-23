@@ -20,8 +20,10 @@ import {
   deleteWorkerPayment, 
   signInWithGoogle, 
   logOut, 
-  subscribeToAuth 
+  subscribeToAuth,
+  resyncAllToGoogleSheets
 } from './services/db';
+import { getSpreadsheetUrl } from './services/googleSheets';
 import { FactorySettings, LotInvoice, Worker, WorkerPayment } from './types';
 import { defaultFactorySettings, initialLots, initialWorkers } from './data/seedData';
 import { Navbar } from './components/Navbar';
@@ -31,6 +33,7 @@ import { LotFormModal } from './components/LotFormModal';
 import { WorkerLedgerModal } from './components/WorkerLedgerModal';
 import { WorkerManagerModal } from './components/WorkerManagerModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ExternalLink, Check, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -46,12 +49,15 @@ export default function App() {
   const [editingLot, setEditingLot] = useState<LotInvoice | null>(null);
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState<string | null>(getSpreadsheetUrl());
+  const [syncToast, setSyncToast] = useState<{ message: string; url?: string } | null>(null);
 
   // Initialize and subscribe
   useEffect(() => {
     initializeData();
     setSettings(getFactorySettings());
     setPayments(getWorkerPayments());
+    setSheetUrl(getSpreadsheetUrl());
 
     const unsubAuth = subscribeToAuth((currentUser) => {
       setUser(currentUser);
@@ -75,17 +81,54 @@ export default function App() {
   // Auth Handlers
   const handleLogin = async () => {
     try {
-      await signInWithGoogle();
+      setIsSyncing(true);
+      const res = await signInWithGoogle();
+      if (res.accessToken) {
+        // Automatically sync existing data or create Google Sheet
+        const url = await resyncAllToGoogleSheets();
+        setSheetUrl(url);
+        setSyncToast({
+          message: 'Google Sheets এর সাথে সফলভাবে কানেক্ট ও সিঙ্ক হয়েছে!',
+          url,
+        });
+        setTimeout(() => setSyncToast(null), 6000);
+      }
     } catch (err: any) {
       alert('Google Sign-in এ সমস্যা হয়েছে: ' + (err.message || err));
+    } finally {
+      setIsSyncing(false);
     }
   };
 
   const handleLogout = async () => {
     try {
       await logOut();
+      setUser(null);
     } catch (err: any) {
       console.error('Logout error:', err);
+    }
+  };
+
+  // Manual trigger to sync all data to Google Sheets
+  const handleManualSyncSheets = async () => {
+    if (!user) {
+      handleLogin();
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      const url = await resyncAllToGoogleSheets();
+      setSheetUrl(url);
+      setSyncToast({
+        message: 'সকল চালান ও কারিগর ডেটা Google Sheets এ সিঙ্ক করা হয়েছে!',
+        url,
+      });
+      setTimeout(() => setSyncToast(null), 6000);
+    } catch (err: any) {
+      alert('Google Sheets এ সিঙ্ক করতে ব্যর্থ: ' + (err.message || err));
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -103,27 +146,54 @@ export default function App() {
   const handleSaveLot = async (lot: LotInvoice) => {
     setIsSyncing(true);
     await saveLotInvoice(lot);
+    setSheetUrl(getSpreadsheetUrl());
     setIsSyncing(false);
     setIsLotFormOpen(false);
     setEditingLot(null);
     // Open the printable bill immediately so user can review/print
     setViewingLot(lot);
+
+    if (user) {
+      setSyncToast({
+        message: `চালান #${lot.invoiceNo} সংরক্ষিত হয়েছে এবং Google Sheets এ যুক্ত হয়েছে`,
+        url: getSpreadsheetUrl() || undefined,
+      });
+      setTimeout(() => setSyncToast(null), 4000);
+    }
   };
 
   const handleDeleteLot = async (lotId: string) => {
+    setIsSyncing(true);
     await deleteLotInvoice(lotId);
+    setSheetUrl(getSpreadsheetUrl());
+    setIsSyncing(false);
+
     if (viewingLot && viewingLot.id === lotId) {
       setViewingLot(null);
+    }
+
+    if (user) {
+      setSyncToast({
+        message: 'চালানটি মুছে ফেলা হয়েছে এবং সাথে সাথে Google Sheets থেকেও রিমুভ হয়েছে',
+        url: getSpreadsheetUrl() || undefined,
+      });
+      setTimeout(() => setSyncToast(null), 4000);
     }
   };
 
   // Worker Handlers
   const handleSaveWorker = async (worker: Worker) => {
+    setIsSyncing(true);
     await saveWorker(worker);
+    setSheetUrl(getSpreadsheetUrl());
+    setIsSyncing(false);
   };
 
   const handleDeleteWorker = async (workerId: string) => {
+    setIsSyncing(true);
     await deleteWorker(workerId);
+    setSheetUrl(getSpreadsheetUrl());
+    setIsSyncing(false);
   };
 
   const handleSelectWorkerByNameOrId = (workerId: string, workerName: string) => {
@@ -132,7 +202,6 @@ export default function App() {
       found = workers.find((w) => w.name.toLowerCase().trim() === workerName.toLowerCase().trim());
     }
     if (!found) {
-      // Create temporary worker object for khotiyan if missing
       found = {
         id: workerId || `w-${Date.now()}`,
         name: workerName,
@@ -162,7 +231,7 @@ export default function App() {
   };
 
   const handleResetSettings = () => {
-    if (confirm('আপনি কি ফ্যাক্টরি সেটিংস ডেমো মান অনুযায়ী রিসেট করতে চান?')) {
+    if (confirm('আপনি কি ফ্যাক্টরি সেটিংস ডিফল্ট মান অনুযায়ী রিসেট করতে চান?')) {
       handleSaveSettings(defaultFactorySettings);
     }
   };
@@ -183,7 +252,33 @@ export default function App() {
         onLogin={handleLogin}
         onLogout={handleLogout}
         isSyncing={isSyncing}
+        workersCount={workers.length}
+        sheetUrl={sheetUrl}
+        onManualSyncSheets={handleManualSyncSheets}
       />
+
+      {/* Real-time Google Sheets Sync Notification Banner */}
+      {syncToast && (
+        <div className="bg-emerald-900 text-emerald-100 px-4 py-2.5 shadow-md flex items-center justify-between text-xs sm:text-sm animate-fadeIn no-print">
+          <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{syncToast.message}</span>
+            </div>
+            {syncToast.url && (
+              <a
+                href={syncToast.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold underline hover:text-white flex items-center gap-1 shrink-0"
+              >
+                <span>Google Sheets দেখুন</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8">
@@ -270,7 +365,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 no-print">
         <p>
-          {settings.factoryName} • পিস-রেট কারিগর বিলিং ও খতিয়ান ম্যানেজমেন্ট সিস্টেম • Firebase ক্লাউড ব্যাকআপ
+          {settings.factoryName} • পিস-রেট কারিগর বিলিং ও খতিয়ান ম্যানেজমেন্ট • Google Sheets & Firebase রিয়েল-টাইম অটো-সিঙ্ক
         </p>
       </footer>
 
