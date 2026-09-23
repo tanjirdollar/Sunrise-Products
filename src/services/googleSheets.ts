@@ -30,6 +30,12 @@ export const getSpreadsheetUrl = (id?: string | null): string | null => {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
 };
 
+export interface SheetSyncError extends Error {
+  isApiDisabled?: boolean;
+  activationUrl?: string;
+  code?: number;
+}
+
 /**
  * Creates or gets the existing Google Spreadsheet in user's Drive
  */
@@ -74,7 +80,28 @@ export const getOrCreateSpreadsheet = async (): Promise<string> => {
 
   if (!createRes.ok) {
     const errorText = await createRes.text();
-    throw new Error(`Failed to create Google Sheet: ${errorText}`);
+    let friendlyMessage = errorText;
+    let activationUrl = 'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=858072248658';
+    let isApiDisabled = false;
+
+    try {
+      const parsed = JSON.parse(errorText);
+      if (parsed?.error?.message) {
+        friendlyMessage = parsed.error.message;
+      }
+      if (errorText.includes('Google Sheets API has not been used in project') || errorText.includes('it is disabled') || parsed?.error?.code === 403) {
+        isApiDisabled = true;
+        const match = friendlyMessage.match(/https:\/\/console\.developers\.google\.com[^\s]+/);
+        if (match) {
+          activationUrl = match[0];
+        }
+      }
+    } catch {}
+
+    const err: SheetSyncError = new Error(friendlyMessage);
+    err.isApiDisabled = isApiDisabled || errorText.includes('sheets.googleapis.com');
+    err.activationUrl = activationUrl;
+    throw err;
   }
 
   const data = await createRes.json();

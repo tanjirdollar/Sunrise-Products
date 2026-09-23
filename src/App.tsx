@@ -33,7 +33,7 @@ import { LotFormModal } from './components/LotFormModal';
 import { WorkerLedgerModal } from './components/WorkerLedgerModal';
 import { WorkerManagerModal } from './components/WorkerManagerModal';
 import { SettingsModal } from './components/SettingsModal';
-import { ExternalLink, Check, AlertCircle } from 'lucide-react';
+import { ExternalLink, Check, AlertTriangle, X, RefreshCw, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -51,6 +51,12 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [sheetUrl, setSheetUrl] = useState<string | null>(getSpreadsheetUrl());
   const [syncToast, setSyncToast] = useState<{ message: string; url?: string } | null>(null);
+  
+  // API activation instruction modal
+  const [apiActivationModal, setApiActivationModal] = useState<{
+    isOpen: boolean;
+    url: string;
+  } | null>(null);
 
   // Initialize and subscribe
   useEffect(() => {
@@ -84,14 +90,24 @@ export default function App() {
       setIsSyncing(true);
       const res = await signInWithGoogle();
       if (res.accessToken) {
-        // Automatically sync existing data or create Google Sheet
-        const url = await resyncAllToGoogleSheets();
-        setSheetUrl(url);
-        setSyncToast({
-          message: 'Google Sheets এর সাথে সফলভাবে কানেক্ট ও সিঙ্ক হয়েছে!',
-          url,
-        });
-        setTimeout(() => setSyncToast(null), 6000);
+        // Attempt syncing to Google Sheets
+        try {
+          const url = await resyncAllToGoogleSheets();
+          setSheetUrl(url);
+          setSyncToast({
+            message: 'Google Sheets এর সাথে সফলভাবে কানেক্ট ও সিঙ্ক হয়েছে!',
+            url,
+          });
+          setTimeout(() => setSyncToast(null), 6000);
+        } catch (sheetErr: any) {
+          console.warn('Google Sheets sync deferred on login:', sheetErr);
+          if (sheetErr.isApiDisabled || sheetErr.message?.includes('sheets.googleapis.com')) {
+            setApiActivationModal({
+              isOpen: true,
+              url: sheetErr.activationUrl || 'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=858072248658'
+            });
+          }
+        }
       }
     } catch (err: any) {
       alert('Google Sign-in এ সমস্যা হয়েছে: ' + (err.message || err));
@@ -126,7 +142,14 @@ export default function App() {
       });
       setTimeout(() => setSyncToast(null), 6000);
     } catch (err: any) {
-      alert('Google Sheets এ সিঙ্ক করতে ব্যর্থ: ' + (err.message || err));
+      if (err.isApiDisabled || err.message?.includes('sheets.googleapis.com')) {
+        setApiActivationModal({
+          isOpen: true,
+          url: err.activationUrl || 'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=858072248658'
+        });
+      } else {
+        alert('Google Sheets এ সিঙ্ক করতে ব্যর্থ: ' + (err.message || err));
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -150,12 +173,11 @@ export default function App() {
     setIsSyncing(false);
     setIsLotFormOpen(false);
     setEditingLot(null);
-    // Open the printable bill immediately so user can review/print
     setViewingLot(lot);
 
     if (user) {
       setSyncToast({
-        message: `চালান #${lot.invoiceNo} সংরক্ষিত হয়েছে এবং Google Sheets এ যুক্ত হয়েছে`,
+        message: `চালান #${lot.invoiceNo} সংরক্ষিত হয়েছে এবং Google Sheets এ সিঙ্ক হয়েছে`,
         url: getSpreadsheetUrl() || undefined,
       });
       setTimeout(() => setSyncToast(null), 4000);
@@ -174,7 +196,7 @@ export default function App() {
 
     if (user) {
       setSyncToast({
-        message: 'চালানটি মুছে ফেলা হয়েছে এবং সাথে সাথে Google Sheets থেকেও রিমুভ হয়েছে',
+        message: 'চালানটি মুছে ফেলা হয়েছে এবং Google Sheets থেকেও রিমুভ হয়েছে',
         url: getSpreadsheetUrl() || undefined,
       });
       setTimeout(() => setSyncToast(null), 4000);
@@ -330,6 +352,68 @@ export default function App() {
         )}
 
       </main>
+
+      {/* MODAL: Google Sheets API Activation Helper */}
+      {apiActivationModal && apiActivationModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-amber-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between gap-3">
+              <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <button
+                onClick={() => setApiActivationModal(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <h3 className="text-base sm:text-lg font-bold text-slate-800 mt-3">
+              Google Sheets API চালু (Enable) করুন
+            </h3>
+            
+            <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
+              আপনার Google প্রজেক্টে (<strong>858072248658 / scanne-bijoy</strong>) সরাসরি স্প্রেডশিট তৈরির জন্য Google Sheets API টি এখনো চালু করা হয়নি।
+            </p>
+
+            <div className="mt-4 bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-2 text-xs text-amber-900">
+              <p className="font-semibold text-amber-950 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-amber-600" />
+                মাত্র ১ ক্লিকে চালু করার নিয়ম:
+              </p>
+              <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-700 pl-1">
+                <li>নিচের নীল বাটনে ক্লিক করলে Google Cloud পেজটি খুলবে।</li>
+                <li>সেখানে থাকা নীল <strong>"ENABLE"</strong> বাটনে চাপ দিন।</li>
+                <li>চালু করার পর এই পেজে ফিরে এসে নিচের <strong>"এখনই সিঙ্ক করুন"</strong> চাপুন।</li>
+              </ol>
+            </div>
+
+            <div className="mt-5 flex flex-col sm:flex-row gap-2.5">
+              <a
+                href={apiActivationModal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-xl text-xs sm:text-sm text-center flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+              >
+                <span>Google Sheets API চালু করুন</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
+              <button
+                onClick={() => {
+                  setApiActivationModal(null);
+                  handleManualSyncSheets();
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>এখনই সিঙ্ক করুন</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: New Lot / Edit Lot Form */}
       <LotFormModal
