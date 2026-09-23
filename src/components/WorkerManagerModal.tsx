@@ -12,7 +12,9 @@ import {
   ArrowRight,
   Printer,
   Sparkles,
-  Phone
+  Phone,
+  X,
+  UserX
 } from 'lucide-react';
 import { FactorySettings, LotInvoice, Worker } from '../types';
 
@@ -257,21 +259,53 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
         </form>
       )}
 
-      {/* Search Input */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+      {/* Search Input & Status */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="৫০-৬০ জন কারিগরের মধ্যে নাম, কার্ড নং বা পদবি দিয়ে খুঁজুন..."
+            placeholder="কারিগরের নাম (Worker Name), কার্ড নং বা পদবি দিয়ে খুঁজুন..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            className="w-full pl-9 pr-9 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none transition-colors"
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition-colors"
+              title="সার্চ মুছুন"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="text-xs text-slate-500 font-medium shrink-0 flex items-center gap-1.5 self-end sm:self-auto">
+          <span>মোট:</span>
+          <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+            {filteredWorkers.length} / {workers.length} জন
+          </span>
         </div>
       </div>
 
-      {/* Workers Grid */}
+      {/* Workers Grid or Empty Search State */}
+      {filteredWorkers.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200 p-10 text-center">
+          <UserX className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+          <h4 className="text-sm font-bold text-slate-700">কোনো কারিগর পাওয়া যায়নি</h4>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+            {search ? `"${search}" নামের সাথে মিল রেখে কোনো কারিগর নেই।` : 'এখনো কোনো কারিগর যুক্ত করা হয়নি। নতুন কারিগর যোগ করুন।'}
+          </p>
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="mt-3 text-xs font-semibold text-emerald-600 hover:text-emerald-700 underline"
+            >
+              সার্চ ফিল্টার ক্লিয়ার করুন
+            </button>
+          )}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {filteredWorkers.map((worker) => {
           const stats = workerStatsMap.get(worker.id) || { lotsCount: 0, totalDZ: 0, totalEarned: 0 };
@@ -360,6 +394,7 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
           );
         })}
       </div>
+      )}
 
     </div>
   );
