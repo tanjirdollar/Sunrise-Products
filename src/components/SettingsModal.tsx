@@ -8,7 +8,9 @@ import {
   Check, 
   Cloud, 
   ShieldCheck,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Trash2,
+  Database
 } from 'lucide-react';
 import { FactorySettings } from '../types';
 import { defaultFactorySettings } from '../data/seedData';
@@ -17,12 +19,16 @@ interface SettingsModalProps {
   settings: FactorySettings;
   onSave: (settings: FactorySettings) => void;
   onResetDefaults: () => void;
+  onLoadDemoData?: () => void;
+  onResetAllData?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onSave,
   onResetDefaults,
+  onLoadDemoData,
+  onResetAllData,
 }) => {
   const [formData, setFormData] = useState<FactorySettings>({ ...settings });
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -190,13 +196,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-slate-900">ফায়ারবেস ক্লাউড ডাটাবেজ সক্রিয়</h4>
                 <p className="text-xs text-slate-500">
-                  আপনার সমস্ত চালান ও খতিয়ান ক্লাউডে সংরক্ষিত এবং যেকোনো মোবাইল বা কম্পিউটার থেকে অ্যাক্সেসযোগ্য।
+                  আপনার সমস্ত চালান ও খতিয়ান ক্লাউডে সংরক্ষিত এবং যেকোনো ডিভাইস থেকে অ্যাক্সেসযোগ্য।
                 </p>
               </div>
             </div>
             <span className="text-xs font-semibold px-2.5 py-1 rounded bg-emerald-100 text-emerald-800">
               Cloud Ready
             </span>
+          </div>
+        </div>
+
+        {/* Demo Data & Factory Reset Card */}
+        <div className="pt-4 border-t border-slate-200">
+          <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4">
+            <div className="flex items-center gap-2.5 mb-2">
+              <Database className="w-5 h-5 text-amber-700" />
+              <h4 className="text-sm font-bold text-slate-900">ডেমো ডেটা ও কারখানা রিসেট ব্যবস্থাপনা</h4>
+            </div>
+            <p className="text-xs text-slate-600 mb-3">
+              আপনি ৫০ জন ডেমো কারিগর ও নমুনা চালান দিয়ে সিস্টেমটি পরীক্ষা করতে পারেন। পরবর্তীতে কারখানা খালি (Clean Slate) করে আপনার নিজস্ব কারখানার ডেটা যুক্ত করতে পারবেন।
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {onLoadDemoData && (
+                <button
+                  type="button"
+                  onClick={onLoadDemoData}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>৫০ জন ডেমো কারিগর ও চালান লোড করুন</span>
+                </button>
+              )}
+
+              {onResetAllData && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('আপনি কি নিশ্চিত যে সমস্ত কারিগর ও চালান ডেটা মুছে ফেলে কারখানা সম্পূর্ণ খালি (Clean Slate) করতে চান?')) {
+                      onResetAllData();
+                    }
+                  }}
+                  className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 text-xs font-semibold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>সমস্ত ডেটা রিসেট (কারখানা খালি করুন)</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

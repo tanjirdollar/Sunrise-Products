@@ -210,6 +210,81 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
   return (
     <div className="min-h-screen bg-slate-100 py-4 sm:py-8 px-2 sm:px-6">
       
+      {/* Embedded High-Precision Print Stylesheet */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 5mm 7mm 5mm 7mm !important;
+          }
+          html, body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            font-size: 8.5pt !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .print-container {
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+          .print-header {
+            margin-bottom: 3px !important;
+            padding-bottom: 2px !important;
+          }
+          .print-meta {
+            margin-bottom: 4px !important;
+            font-size: 8pt !important;
+            line-height: 1.25 !important;
+          }
+          .print-table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            border: 1.2px solid #000 !important;
+          }
+          .print-table th {
+            border: 1px solid #000 !important;
+            padding: 2px 2px !important;
+            font-size: 8pt !important;
+            background-color: #f1f5f9 !important;
+            font-weight: 700 !important;
+            color: #000 !important;
+          }
+          .print-table td {
+            border: 1px solid #000 !important;
+            padding: 1.5px 2.5px !important;
+            font-size: 8pt !important;
+            line-height: 1.15 !important;
+            color: #000 !important;
+          }
+          .print-table tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            height: 17px !important;
+          }
+          .print-sig-col {
+            height: 14px !important;
+            padding: 0 !important;
+          }
+          .print-signatures {
+            margin-top: 14px !important;
+            padding-top: 10px !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            font-size: 8pt !important;
+          }
+        }
+      `}</style>
+
       {/* Top Action Bar (Hidden in Print) */}
       <div className="max-w-4xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 no-print">
         <button
@@ -435,92 +510,88 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
         )}
       </div>
 
-      {/* Main Printable Document Card (White Paper Look) */}
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md border border-slate-300 p-5 sm:p-10 text-slate-900 print-container">
+      {/* Main Printable Document Card (High-Density Print Formation) */}
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md border border-slate-300 p-4 sm:p-8 text-slate-900 print-container">
         
-        {/* Factory Header (Exact match with photo) */}
-        <div className="text-center border-b border-transparent pb-3 mb-3">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 font-serif">
+        {/* Factory Header */}
+        <div className="text-center print-header pb-2 mb-2">
+          <h1 className="text-2xl sm:text-3xl print:text-xl font-bold tracking-tight text-slate-950 font-serif leading-tight">
             {lot.factoryUnit || settings.factoryName}
           </h1>
-          <p className="text-xs sm:text-sm font-medium text-slate-700 mt-0.5">
-            {settings.addressLine1}
-          </p>
-          <p className="text-xs sm:text-sm font-medium text-slate-700">
-            {settings.addressLine2}
-          </p>
-          <p className="text-xs sm:text-sm font-medium text-slate-700">
-            {settings.country}
+          <p className="text-xs sm:text-sm print:text-[8.5pt] font-medium text-slate-700 mt-0.5 leading-tight">
+            {settings.addressLine1}, {settings.addressLine2}, {settings.country}
           </p>
 
-          <div className="mt-3">
-            <h2 className="text-lg sm:text-xl font-bold tracking-wide text-slate-900 uppercase underline underline-offset-4 decoration-1 font-serif">
+          <div className="mt-1.5 print:mt-1">
+            <h2 className="text-base sm:text-lg print:text-[11pt] font-bold tracking-wide text-slate-950 uppercase underline underline-offset-4 decoration-1 font-serif">
               {settings.billTitle || 'PCS Rate Worker Bill'}
             </h2>
           </div>
         </div>
 
-        {/* Invoice Metadata Grid (Exact layout from photo) */}
-        <div className="grid grid-cols-2 text-xs sm:text-sm font-sans mb-4 pt-1">
+        {/* Invoice Metadata Grid (Item description clearly directly above worker list) */}
+        <div className="grid grid-cols-2 text-xs sm:text-sm print:text-[8pt] font-sans mb-3 print:mb-1.5 pt-1 border-y border-slate-200 print:border-black py-1.5 print:py-1 print-meta">
           {/* Left Metadata Column */}
-          <div className="space-y-1">
+          <div className="space-y-0.5 print:space-y-0">
             <div className="flex">
-              <span className="font-semibold w-24 sm:w-28 text-slate-800">Invoice No :</span>
-              <span className="font-bold text-slate-950">{lot.invoiceNo}</span>
+              <span className="font-bold w-24 sm:w-28 print:w-20 text-slate-800 print:text-black">Invoice No :</span>
+              <span className="font-extrabold text-slate-950 font-mono">{lot.invoiceNo}</span>
             </div>
             <div className="flex">
-              <span className="font-semibold w-24 sm:w-28 text-slate-800">Line :</span>
-              <span className="text-slate-900">{lot.line}</span>
+              <span className="font-bold w-24 sm:w-28 print:w-20 text-slate-800 print:text-black">Line :</span>
+              <span className="text-slate-900 font-medium">{lot.line}</span>
             </div>
             <div className="flex">
-              <span className="font-semibold w-24 sm:w-28 text-slate-800">Factory Unit :</span>
-              <span className="text-slate-900">{lot.factoryUnit || settings.factoryName}</span>
+              <span className="font-bold w-24 sm:w-28 print:w-20 text-slate-800 print:text-black">Factory Unit :</span>
+              <span className="text-slate-900 font-medium">{lot.factoryUnit || settings.factoryName}</span>
             </div>
             <div className="flex">
-              <span className="font-semibold w-24 sm:w-28 text-slate-800">Category :</span>
+              <span className="font-bold w-24 sm:w-28 print:w-20 text-slate-800 print:text-black">Category :</span>
               <span className="font-medium text-slate-900">{lot.category}</span>
             </div>
-            <div className="flex">
-              <span className="font-semibold w-24 sm:w-28 text-slate-800">Item :</span>
-              <span className="font-bold text-slate-950">{lot.item}</span>
-            </div>
-            <div className="flex">
-              <span className="font-semibold w-24 sm:w-28 text-slate-800">Total DZ :</span>
-              <span className="font-bold text-slate-950">{lotTargetDZ.toFixed(2)} DZ ({lotTargetPcs} PCS)</span>
+            <div className="flex bg-slate-100 print:bg-transparent px-1 py-0.5 rounded">
+              <span className="font-bold w-24 sm:w-28 print:w-20 text-slate-900 print:text-black">Item :</span>
+              <span className="font-bold text-slate-950 underline underline-offset-2">{lot.item}</span>
             </div>
           </div>
 
           {/* Right Metadata Column */}
-          <div className="space-y-1 text-right">
+          <div className="space-y-0.5 print:space-y-0 text-right">
             <div className="flex justify-end">
-              <span className="font-semibold text-slate-800 mr-2">Invoice Date :</span>
-              <span className="font-medium text-slate-950">{lot.invoiceDate}</span>
+              <span className="font-bold text-slate-800 print:text-black mr-2">Invoice Date :</span>
+              <span className="font-medium text-slate-950 font-mono">{lot.invoiceDate}</span>
             </div>
             <div className="flex justify-end">
-              <span className="font-semibold text-slate-800 mr-2">Receive Date :</span>
-              <span className="font-medium text-slate-950">{lot.receiveDate}</span>
+              <span className="font-bold text-slate-800 print:text-black mr-2">Receive Date :</span>
+              <span className="font-medium text-slate-950 font-mono">{lot.receiveDate}</span>
             </div>
-            <div className="flex justify-end text-xs text-slate-500 pt-3 no-print">
+            <div className="flex justify-end pt-1">
+              <span className="font-bold text-slate-800 print:text-black mr-2">Total Lot :</span>
+              <span className="font-black text-slate-950 font-mono bg-slate-100 print:bg-transparent px-1.5 py-0.5 rounded">
+                {lotTargetDZ.toFixed(2)} DZ ({lotTargetPcs} PCS)
+              </span>
+            </div>
+            <div className="flex justify-end text-[11px] print:text-[7.5pt] text-slate-600 print:text-black pt-0.5">
               <span>মাল প্রাপ্ত কারিগর: {lot.items.length} জন</span>
             </div>
           </div>
         </div>
 
-        {/* Bill Table (Exact replica of photo with crisp borders) */}
+        {/* Bill Table (Engineered to fit at least 30-35 workers on Page 1) */}
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-slate-900 text-xs sm:text-sm print-table">
+          <table className="w-full border-collapse border border-slate-900 print:border-black text-xs sm:text-sm print:text-[8pt] print-table">
             <thead>
-              <tr className="bg-slate-100 text-slate-950 text-center font-bold">
-                <th className="border border-slate-900 px-2 py-1.5 w-10">SL No</th>
-                <th className="border border-slate-900 px-3 py-1.5 text-left">Employee</th>
-                <th className="border border-slate-900 px-3 py-1.5 text-left">Designation</th>
-                <th className="border border-slate-900 px-2 py-1.5 w-16">Size</th>
-                <th className="border border-slate-900 px-2 py-1.5 w-20">Qty (PCS)</th>
-                <th className="border border-slate-900 px-2 py-1.5 w-20">Qty DZ</th>
-                <th className="border border-slate-900 px-2 py-1.5 w-20">Price</th>
-                <th className="border border-slate-900 px-2 py-1.5 w-24">Total Price</th>
-                <th className="border border-slate-900 px-3 py-1.5 w-28 sm:w-32">Signature</th>
-                <th className="border border-slate-900 px-2 py-1.5 w-16 no-print">অ্যাকশন</th>
+              <tr className="bg-slate-100 print:bg-slate-200 text-slate-950 text-center font-bold">
+                <th className="border border-slate-900 print:border-black px-1.5 py-1 print:py-0.5 w-8 print:w-7">SL</th>
+                <th className="border border-slate-900 print:border-black px-2 py-1 print:py-0.5 text-left w-48 print:w-36">Employee</th>
+                <th className="border border-slate-900 print:border-black px-2 py-1 print:py-0.5 text-left w-44 print:w-32">Designation</th>
+                <th className="border border-slate-900 print:border-black px-1.5 py-1 print:py-0.5 w-14 print:w-12">Size</th>
+                <th className="border border-slate-900 print:border-black px-1.5 py-1 print:py-0.5 w-18 print:w-16">Qty (PCS)</th>
+                <th className="border border-slate-900 print:border-black px-1.5 py-1 print:py-0.5 w-18 print:w-16">Qty DZ</th>
+                <th className="border border-slate-900 print:border-black px-1.5 py-1 print:py-0.5 w-16 print:w-14">Price</th>
+                <th className="border border-slate-900 print:border-black px-2 py-1 print:py-0.5 w-24 print:w-20">Total Price</th>
+                <th className="border border-slate-900 print:border-black px-2 py-1 print:py-0.5 w-24 print:w-20">Signature</th>
+                <th className="border border-slate-900 px-1 py-1 w-14 no-print">অ্যাকশন</th>
               </tr>
             </thead>
             <tbody>
@@ -550,19 +621,19 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                   return (
                     <tr key={item.id || index} className="hover:bg-slate-50">
                       {/* SL No */}
-                      <td className="border border-slate-900 px-2 py-1 text-center font-medium text-slate-800">
+                      <td className="border border-slate-900 print:border-black px-1 py-0.5 text-center font-bold text-slate-800 print:text-black font-mono">
                         {index + 1}
                       </td>
 
                       {/* Employee Name */}
-                      <td className="border border-slate-900 px-3 py-1 font-medium text-slate-950">
+                      <td className="border border-slate-900 print:border-black px-2 py-0.5 font-bold text-slate-950 print:text-black">
                         <button
                           type="button"
                           onClick={() => onSelectWorker(item.workerId, item.workerName)}
-                          className="text-left font-semibold hover:text-emerald-700 hover:underline group flex items-center justify-between w-full"
+                          className="text-left font-bold hover:text-emerald-700 hover:underline group flex items-center justify-between w-full"
                           title="খতিয়ান দেখতে ক্লিক করুন"
                         >
-                          <span>{item.workerName}</span>
+                          <span className="truncate">{item.workerName}</span>
                           <span className="no-print text-[10px] text-emerald-600 opacity-0 group-hover:opacity-100 font-sans ml-1">
                             খতিয়ান ↗
                           </span>
@@ -570,46 +641,46 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                       </td>
 
                       {/* Designation */}
-                      <td className="border border-slate-900 px-3 py-1 text-slate-800">
+                      <td className="border border-slate-900 print:border-black px-2 py-0.5 text-slate-800 print:text-black truncate">
                         {item.designation}
                       </td>
 
                       {/* Size */}
-                      <td className="border border-slate-900 px-2 py-1 text-center text-slate-800">
+                      <td className="border border-slate-900 print:border-black px-1 py-0.5 text-center text-slate-800 print:text-black font-mono">
                         {item.size || '14/20'}
                       </td>
 
                       {/* Qty PCS */}
-                      <td className="border border-slate-900 px-2 py-1 text-center font-semibold text-slate-950">
+                      <td className="border border-slate-900 print:border-black px-1 py-0.5 text-center font-bold text-slate-950 print:text-black font-mono">
                         {isEditing ? (
                           <input
                             type="number"
                             step="1"
                             value={editPieces}
                             onChange={(e) => setEditPieces(e.target.value)}
-                            className="w-16 p-0.5 text-center font-bold border border-emerald-400 rounded"
+                            className="w-14 p-0.5 text-center font-bold border border-emerald-400 rounded"
                           />
                         ) : (
-                          `${pcs} PCS`
+                          `${pcs}`
                         )}
                       </td>
 
                       {/* Qty DZ */}
-                      <td className="border border-slate-900 px-2 py-1 text-center font-bold text-emerald-800">
+                      <td className="border border-slate-900 print:border-black px-1 py-0.5 text-center font-bold text-slate-950 print:text-black font-mono">
                         {isEditing && parseFloat(editPieces) > 0
                           ? (parseFloat(editPieces) / 12).toFixed(2)
                           : item.quantity.toFixed(2)}
                       </td>
 
                       {/* Price / Rate (Tk/DZ) */}
-                      <td className="border border-slate-900 px-2 py-1 text-right text-slate-900">
+                      <td className="border border-slate-900 print:border-black px-1.5 py-0.5 text-right font-medium text-slate-900 print:text-black font-mono">
                         {isEditing ? (
                           <input
                             type="number"
                             step="0.01"
                             value={editRate}
                             onChange={(e) => setEditRate(e.target.value)}
-                            className="w-16 p-0.5 text-right font-bold border border-emerald-400 rounded"
+                            className="w-14 p-0.5 text-right font-bold border border-emerald-400 rounded"
                           />
                         ) : (
                           item.rate.toFixed(2)
@@ -617,19 +688,19 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                       </td>
 
                       {/* Total Price */}
-                      <td className="border border-slate-900 px-2 py-1 text-right font-bold text-slate-950">
+                      <td className="border border-slate-900 print:border-black px-2 py-0.5 text-right font-bold text-slate-950 print:text-black font-mono">
                         {isEditing && parseFloat(editPieces) > 0 && parseFloat(editRate) > 0
                           ? formatMoney((parseFloat(editPieces) / 12) * parseFloat(editRate))
                           : formatMoney(item.totalPrice)}
                       </td>
 
                       {/* Signature Box */}
-                      <td className="border border-slate-900 px-2 py-1 text-center align-middle h-8">
-                        <div className="w-full border-b border-dotted border-slate-300 print:border-transparent h-4"></div>
+                      <td className="border border-slate-900 print:border-black px-1 py-0.5 text-center align-middle print-sig-col">
+                        <div className="w-full border-b border-dotted border-slate-300 print:border-transparent h-3.5 print:h-2"></div>
                       </td>
 
                       {/* Action column (Hidden in print) */}
-                      <td className="border border-slate-900 px-1 py-1 text-center no-print">
+                      <td className="border border-slate-900 px-1 py-0.5 text-center no-print">
                         {isEditing ? (
                           <div className="flex items-center justify-center gap-1">
                             <button
@@ -675,25 +746,25 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                 })
               )}
 
-              {/* Total Row (Exact matching style) */}
-              <tr className="bg-slate-100 font-bold text-slate-950">
-                <td colSpan={4} className="border border-slate-900 px-3 py-2 text-center text-sm font-serif uppercase tracking-wider">
+              {/* Total Row */}
+              <tr className="bg-slate-100 print:bg-slate-200 font-bold text-slate-950">
+                <td colSpan={4} className="border border-slate-900 print:border-black px-2 py-1 print:py-0.5 text-center text-xs print:text-[8pt] font-serif uppercase tracking-wider">
                   Total
                 </td>
-                <td className="border border-slate-900 px-2 py-2 text-center text-sm font-bold">
-                  {totalAssignedPcs} PCS
+                <td className="border border-slate-900 print:border-black px-1.5 py-1 print:py-0.5 text-center font-black text-slate-950 font-mono">
+                  {totalAssignedPcs}
                 </td>
-                <td className="border border-slate-900 px-2 py-2 text-center text-sm font-bold text-emerald-900">
+                <td className="border border-slate-900 print:border-black px-1.5 py-1 print:py-0.5 text-center font-black text-slate-950 font-mono">
                   {lot.totalQty.toFixed(2)}
                 </td>
-                <td className="border border-slate-900 px-2 py-2 text-center text-xs text-slate-600">
+                <td className="border border-slate-900 print:border-black px-1 py-1 print:py-0.5 text-center text-xs text-slate-600">
                   -
                 </td>
-                <td className="border border-slate-900 px-2 py-2 text-right text-sm font-bold text-slate-950">
+                <td className="border border-slate-900 print:border-black px-2 py-1 print:py-0.5 text-right font-black text-slate-950 font-mono">
                   {formatMoney(lot.totalPrice)}
                 </td>
-                <td className="border border-slate-900 px-2 py-2 text-center text-xs text-slate-500">
-                  মোট কারিগর: {lot.items.length} জন
+                <td className="border border-slate-900 print:border-black px-1 py-1 print:py-0.5 text-center text-[10px] print:text-[7pt] text-slate-600 font-medium">
+                  {lot.items.length} জন
                 </td>
                 <td className="border border-slate-900 px-1 py-1 no-print"></td>
               </tr>
@@ -701,41 +772,41 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
           </table>
         </div>
 
-        {/* Triple Signature Blocks (Exact matching layout with photo) */}
-        <div className="grid grid-cols-3 gap-6 pt-16 mt-6 text-xs sm:text-sm text-slate-900 font-medium">
+        {/* Triple Signature Blocks (Compact & fit on page 1) */}
+        <div className="grid grid-cols-3 gap-6 pt-10 sm:pt-14 print:pt-4 mt-5 print:mt-2 text-xs sm:text-sm print:text-[8pt] text-slate-900 font-medium print-signatures">
           {/* Prepared By */}
           <div className="text-center">
-            <div className="border-t border-slate-900 pt-1.5 font-semibold text-slate-950">
+            <div className="border-t border-slate-900 print:border-black pt-1 font-bold text-slate-950">
               Prepared By
             </div>
-            <p className="text-[11px] text-slate-600 mt-0.5">
+            <p className="text-[11px] print:text-[7pt] text-slate-600 print:text-black mt-0.5">
               {lot.preparedBy || 'Production Incharge'}
             </p>
           </div>
 
           {/* Checked By */}
           <div className="text-center">
-            <div className="border-t border-slate-900 pt-1.5 font-semibold text-slate-950">
+            <div className="border-t border-slate-900 print:border-black pt-1 font-bold text-slate-950">
               Checked By
             </div>
-            <p className="text-[11px] text-slate-600 mt-0.5">
+            <p className="text-[11px] print:text-[7pt] text-slate-600 print:text-black mt-0.5">
               {lot.checkedBy || 'Sweing Supervisor'}
             </p>
           </div>
 
           {/* Received By */}
           <div className="text-center">
-            <div className="border-t border-slate-900 pt-1.5 font-semibold text-slate-950">
+            <div className="border-t border-slate-900 print:border-black pt-1 font-bold text-slate-950">
               Received By
             </div>
-            <p className="text-[11px] text-slate-600 mt-0.5">
+            <p className="text-[11px] print:text-[7pt] text-slate-600 print:text-black mt-0.5">
               {lot.receivedBy || 'Factory Admin'}
             </p>
           </div>
         </div>
 
         {/* Footer Note */}
-        <div className="mt-8 pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 print:text-[9px]">
+        <div className="mt-6 print:mt-1.5 pt-2 print:pt-1 border-t border-slate-200 print:border-slate-400 flex items-center justify-between text-[11px] print:text-[7pt] text-slate-500 print:text-black">
           <span>চালান সিস্টেম: StitchTrack Pro • Narayanganj Garments Hub</span>
           <span>প্রিন্ট তারিখ: {new Date().toLocaleDateString('en-GB')}</span>
         </div>

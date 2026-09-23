@@ -17,7 +17,7 @@ import {
 } from 'firebase/auth';
 import { auth, db, googleProvider } from '../firebase/config';
 import { FactorySettings, LotInvoice, Worker, WorkerPayment } from '../types';
-import { defaultFactorySettings, initialLots, initialWorkers } from '../data/seedData';
+import { defaultFactorySettings, initialLots, initialWorkers, demoWorkers, demoLots } from '../data/seedData';
 import { 
   setGoogleAccessToken, 
   getGoogleAccessToken, 
@@ -89,22 +89,96 @@ const WORKERS_COLLECTION = 'workers';
 const SETTINGS_COLLECTION = 'settings';
 const PAYMENTS_COLLECTION = 'payments';
 
-// Initialize data: Empty slate as requested
+// Initialize data: Load 50 demo workers & sample lot by default (can be reset anytime)
 export const initializeData = async () => {
   // Clear any old mock data from previous version keys
   localStorage.removeItem('stitchtrack_lots_v1');
   localStorage.removeItem('stitchtrack_workers_v1');
 
-  // Ensure default empty arrays
-  if (!localStorage.getItem(WORKERS_STORAGE_KEY)) {
-    setLocalData(WORKERS_STORAGE_KEY, initialWorkers);
+  const hasBeenReset = localStorage.getItem('stitchtrack_has_been_reset');
+  if (!hasBeenReset) {
+    const existingWorkers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []);
+    if (existingWorkers.length === 0) {
+      setLocalData(WORKERS_STORAGE_KEY, demoWorkers);
+    }
+    const existingLots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
+    if (existingLots.length === 0) {
+      setLocalData(LOTS_STORAGE_KEY, demoLots);
+    }
+  } else {
+    if (!localStorage.getItem(WORKERS_STORAGE_KEY)) {
+      setLocalData(WORKERS_STORAGE_KEY, []);
+    }
+    if (!localStorage.getItem(LOTS_STORAGE_KEY)) {
+      setLocalData(LOTS_STORAGE_KEY, []);
+    }
   }
-  if (!localStorage.getItem(LOTS_STORAGE_KEY)) {
-    setLocalData(LOTS_STORAGE_KEY, initialLots);
-  }
+
   if (!localStorage.getItem(SETTINGS_STORAGE_KEY)) {
     setLocalData(SETTINGS_STORAGE_KEY, defaultFactorySettings);
   }
+};
+
+// Load 50 Demo Garments Workers & 32-Worker Sample Lot
+export const loadDemoData = async (): Promise<{ workers: Worker[]; lots: LotInvoice[] }> => {
+  localStorage.removeItem('stitchtrack_has_been_reset');
+  setLocalData(WORKERS_STORAGE_KEY, demoWorkers);
+  setLocalData(LOTS_STORAGE_KEY, demoLots);
+
+  try {
+    for (const w of demoWorkers) {
+      await setDoc(doc(db, WORKERS_COLLECTION, w.id), w, { merge: true });
+    }
+    for (const l of demoLots) {
+      await setDoc(doc(db, LOTS_COLLECTION, l.id), l, { merge: true });
+    }
+  } catch (e) {
+    console.warn('Firestore demo save deferred:', e);
+  }
+
+  if (getGoogleAccessToken()) {
+    try {
+      await syncLotsToGoogleSheets(demoLots);
+      await syncWorkersToGoogleSheets(demoWorkers);
+    } catch (e) {
+      console.warn('Sheets demo sync deferred:', e);
+    }
+  }
+
+  return { workers: demoWorkers, lots: demoLots };
+};
+
+// Reset all demo data to clean slate
+export const resetAllData = async (): Promise<{ workers: Worker[]; lots: LotInvoice[] }> => {
+  localStorage.setItem('stitchtrack_has_been_reset', 'true');
+  const currentWorkers = getLocalData<Worker[]>(WORKERS_STORAGE_KEY, []);
+  const currentLots = getLocalData<LotInvoice[]>(LOTS_STORAGE_KEY, []);
+
+  try {
+    for (const w of currentWorkers) {
+      await deleteDoc(doc(db, WORKERS_COLLECTION, w.id));
+    }
+    for (const l of currentLots) {
+      await deleteDoc(doc(db, LOTS_COLLECTION, l.id));
+    }
+  } catch (e) {
+    console.warn('Firestore reset clear deferred:', e);
+  }
+
+  setLocalData(WORKERS_STORAGE_KEY, []);
+  setLocalData(LOTS_STORAGE_KEY, []);
+  setLocalData(PAYMENTS_STORAGE_KEY, []);
+
+  if (getGoogleAccessToken()) {
+    try {
+      await syncLotsToGoogleSheets([]);
+      await syncWorkersToGoogleSheets([]);
+    } catch (e) {
+      console.warn('Sheets reset sync deferred:', e);
+    }
+  }
+
+  return { workers: [], lots: [] };
 };
 
 // Firestore Realtime Subscription for Lots

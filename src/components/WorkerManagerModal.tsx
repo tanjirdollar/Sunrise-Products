@@ -14,7 +14,8 @@ import {
   Sparkles,
   Phone,
   X,
-  UserX
+  UserX,
+  RotateCcw
 } from 'lucide-react';
 import { FactorySettings, LotInvoice, Worker } from '../types';
 
@@ -25,6 +26,8 @@ interface WorkerManagerModalProps {
   onSelectWorker: (worker: Worker) => void;
   onSaveWorker: (worker: Worker) => void;
   onDeleteWorker: (workerId: string) => void;
+  onLoadDemoWorkers?: () => void;
+  onResetAllData?: () => void;
 }
 
 export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
@@ -34,6 +37,8 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
   onSelectWorker,
   onSaveWorker,
   onDeleteWorker,
+  onLoadDemoWorkers,
+  onResetAllData,
 }) => {
   const [search, setSearch] = useState('');
   const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
@@ -153,6 +158,50 @@ export const WorkerManagerModal: React.FC<WorkerManagerModalProps> = ({
           <UserPlus className="w-4 h-4" />
           <span>নতুন কারিগর যোগ করুন</span>
         </button>
+      </div>
+
+      {/* Demo Workers Banner & Quick Reset Controls */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0"></span>
+          <span className="font-semibold text-slate-800">
+            {workers.length >= 50 ? (
+              <span>ডেমো মোড: <strong>৫০ জন ডেমো কারিগর</strong> সক্রিয় (শুধু দেখার জন্য)</span>
+            ) : (
+              <span>বর্তমান কারিগর সংখ্যা: <strong>{workers.length} জন</strong></span>
+            )}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {onLoadDemoWorkers && (
+            <button
+              type="button"
+              onClick={onLoadDemoWorkers}
+              className="text-emerald-800 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+              title="৫০ জন ডেমো কারিগর ও নমুনা চালান লোড করুন"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>৫০ জন ডেমো ডেটা লোড করুন</span>
+            </button>
+          )}
+
+          {onResetAllData && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('আপনি কি নিশ্চিত যে সমস্ত ডেমো ডেটা ও কারখানা রিসেট করে সম্পূর্ণ খালি (Clean Slate) করতে চান?')) {
+                  onResetAllData();
+                }
+              }}
+              className="text-red-700 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+              title="সমস্ত ডেমো কারিগর ও চালান মুছে কারখানা খালি করুন"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>কারখানা রিসেট (খালি করুন)</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Add / Edit Worker Drawer Form */}

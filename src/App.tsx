@@ -21,7 +21,9 @@ import {
   signInWithGoogle, 
   logOut, 
   subscribeToAuth,
-  resyncAllToGoogleSheets
+  resyncAllToGoogleSheets,
+  loadDemoData,
+  resetAllData
 } from './services/db';
 import { getSpreadsheetUrl, getGoogleAccessToken } from './services/googleSheets';
 import { FactorySettings, LotInvoice, Worker, WorkerPayment } from './types';
@@ -261,6 +263,45 @@ export default function App() {
     }
   };
 
+  // Demo Data & Factory Reset Handlers
+  const handleLoadDemoData = async () => {
+    try {
+      setIsSyncing(true);
+      const data = await loadDemoData();
+      setWorkers(data.workers);
+      setLots(data.lots);
+      setSyncToast({
+        message: '৫০ জন ডেমো কারিগর ও নমুনা চালান সফলভাবে লোড হয়েছে!',
+        url: getSpreadsheetUrl() || undefined,
+      });
+      setTimeout(() => setSyncToast(null), 5000);
+    } catch (e: any) {
+      alert('ডেমো ডেটা লোড করতে ব্যর্থ: ' + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleResetAllData = async () => {
+    try {
+      setIsSyncing(true);
+      const data = await resetAllData();
+      setWorkers(data.workers);
+      setLots(data.lots);
+      setViewingLot(null);
+      setSelectedWorker(null);
+      setEditingLot(null);
+      setSyncToast({
+        message: 'সমস্ত ডেটা মুছে কারখানা সম্পূর্ণ খালি (Clean Slate) করা হয়েছে',
+      });
+      setTimeout(() => setSyncToast(null), 4000);
+    } catch (e: any) {
+      alert('ডেটা রিসেট করতে সমস্যা হয়েছে: ' + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
       
@@ -342,6 +383,8 @@ export default function App() {
                 onSelectWorker={(w) => setSelectedWorker(w)}
                 onSaveWorker={handleSaveWorker}
                 onDeleteWorker={handleDeleteWorker}
+                onLoadDemoWorkers={handleLoadDemoData}
+                onResetAllData={handleResetAllData}
               />
             )}
 
@@ -351,6 +394,8 @@ export default function App() {
                 settings={settings}
                 onSave={handleSaveSettings}
                 onResetDefaults={handleResetSettings}
+                onLoadDemoData={handleLoadDemoData}
+                onResetAllData={handleResetAllData}
               />
             )}
           </>
