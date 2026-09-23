@@ -1,0 +1,6 @@
+{
+  "name": "StitchTrack Pro - Piece Rate Worker Bill",
+  "description": "কারখানা ও সুইং সেকশনের কারিগরদের পিস-রেট হিসাব, লট চালান ও প্রিন্টযোগ্য বিল শিট",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
